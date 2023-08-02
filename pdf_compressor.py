@@ -10,8 +10,10 @@ def compress_pdf(input_file, compression_factor):
     with open('temp.pdf', 'wb') as f:
         for page_num in range(reader.numPages):
             page = reader.getPage(page_num)
-            page.compressContentStreams(compression_factor)
             writer.addPage(page)
+        
+        # Set the compression level for the entire document (between 0 and 1)
+        writer.setCompression(compression_factor)
         writer.write(f)
 
     # Read the intermediate PDF file back to BytesIO
