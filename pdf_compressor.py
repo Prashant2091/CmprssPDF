@@ -36,8 +36,8 @@ if uploaded_file is not None:
     output_buffer = BytesIO()
     compressed_pdf.write(output_buffer)
 
-    # Download button to download the compressed PDF
-    st.components.v1.download_button(label="Download Compressed PDF", data=output_buffer.getvalue(), file_name="compressed_pdf.pdf")
+    # Download link to download the compressed PDF
+    st.markdown(f'<a href="data:application/pdf;base64,{output_buffer.getvalue().decode("base64")}" download="compressed_pdf.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
 
     # Display the compressed file size
     st.write(f"Compressed File Size: {round(len(output_buffer.getvalue())/1024, 2)} KB")
