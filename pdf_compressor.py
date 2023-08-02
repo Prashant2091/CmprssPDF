@@ -34,4 +34,4 @@ if uploaded_file is not None:
     # Display compressed file size and provide download link
     compressed_size = len(compressed_pdf.getvalue())
     st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
-    st.download_as_file(compressed_pdf, "compressed.pdf", "Download Compressed PDF")
+    st.download_button("Download Compressed PDF", compressed_pdf, "compressed.pdf")
