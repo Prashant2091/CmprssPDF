@@ -1,39 +1,33 @@
 import streamlit as st
-import fitz
+import PyPDF2
 import io
-import base64
 
-def compress_pdf(uploaded_file, compression_factor):
-    pdf_data = uploaded_file.read()
+def compress_pdf(file, compression_factor):
+    pdf_reader = PyPDF2.PdfFileReader(file)
+    pdf_writer = PyPDF2.PdfFileWriter()
 
-    pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
-    for page_num in range(pdf_document.page_count):
-        page = pdf_document.load_page(page_num)
-        page.apply_compression(compression_factor)
+    for page_num in range(pdf_reader.getNumPages()):
+        page = pdf_reader.getPage(page_num)
+        page.scaleBy(compression_factor)  # Adjust the compression factor as needed
+        pdf_writer.addPage(page)
 
-    output_buffer = io.BytesIO()
-    pdf_document.save(output_buffer, deflate=True)
-    pdf_document.close()
-
-    return output_buffer.getvalue()
+    compressed_pdf = io.BytesIO()
+    pdf_writer.write(compressed_pdf)
+    return compressed_pdf
 
 def main():
-    st.title("PDF Compressor")
-    st.write("Upload a PDF file and choose the compression factor.")
-
+    st.title('PDF Compressor')
     uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
     if uploaded_file is not None:
-        compression_factor = st.slider("Compression Factor", 0, 9, 5)
+        st.write("Original File Size: ", round(uploaded_file.size/1024, 2), "KB")
 
-        if st.button("Compress and Download"):
-            compressed_pdf_content = compress_pdf(uploaded_file, compression_factor)
+        compression_factor = st.slider("Compression Factor", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
 
-            # Provide a custom button label and link to trigger download
-            st.markdown(
-                f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf_content).decode()}" download="compressed_pdf.pdf">Download Compressed PDF</a>',
-                unsafe_allow_html=True,
-            )
+        if st.button("Compress PDF"):
+            compressed_pdf = compress_pdf(uploaded_file, compression_factor)
+            st.write("Compressed File Size: ", round(compressed_pdf.getbuffer().nbytes/1024, 2), "KB")
+            st.download_button("Download Compressed PDF", data=compressed_pdf, file_name="compressed_pdf.pdf", mime="application/pdf")
 
 if __name__ == "__main__":
     main()
