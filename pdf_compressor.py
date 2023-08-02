@@ -1,17 +1,20 @@
 import streamlit as st
-from PyPDF2 import PdfReader, PdfWriter
+import base64
+import tempfile
+import subprocess
+from PyPDF2 import PdfFileReader, PdfFileWriter
 
 # Function to compress the PDF
 def compress_pdf(uploaded_file, compression_factor):
-    pdf_reader = PdfReader(uploaded_file)
+    input_pdf = PdfFileReader(uploaded_file)
+    output_pdf = PdfFileWriter()
 
-    pdf_writer = PdfWriter()
-    for page_number in range(len(pdf_reader.pages)):
-        page = pdf_reader.pages[page_number]
+    for page_number in range(input_pdf.getNumPages()):
+        page = input_pdf.getPage(page_number)
         page.compressContentStreams(compression_factor)
-        pdf_writer.add_page(page)
+        output_pdf.addPage(page)
 
-    return pdf_writer
+    return output_pdf
 
 # Streamlit app title
 st.title('PDF Compressor')
@@ -30,11 +33,15 @@ if uploaded_file is not None:
         # Compress the PDF
         compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
-        # Save the compressed PDF to a bytes object
-        output_buffer = compressed_pdf.write_to_bytes()
+        # Save the compressed PDF to a temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        with open(temp_file.name, 'wb') as f:
+            compressed_pdf.write(f)
 
         # Display the compressed file size
-        st.write(f"Compressed File Size: {round(len(output_buffer) / 1024, 2)} KB")
+        st.write(f"Compressed File Size: {round(temp_file.stat().st_size / 1024, 2)} KB")
 
         # Download the compressed PDF
-        st.download_button(label="Download Compressed PDF", data=output_buffer, file_name="compressed_pdf.pdf")
+        with open(temp_file.name, "rb") as f:
+            data = f.read()
+        st.download_button(label="Download Compressed PDF", data=data, file_name="compressed_pdf.pdf")
