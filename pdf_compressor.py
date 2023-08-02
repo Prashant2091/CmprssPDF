@@ -5,16 +5,17 @@ import os
 
 def compress_pdf(input_file, output_file, compression_factor):
     with open(input_file, "rb") as file:
-        reader = PyPDF2.PdfReader(file)
-        writer = PyPDF2.PdfWriter()
+        reader = PyPDF2.PdfFileReader(file)
+        writer = PyPDF2.PdfFileWriter()
 
-        for page in reader.pages:
+        for page_number in range(reader.getNumPages()):
+            page = reader.getPage(page_number)
             # Reduce the resolution to reduce file size
             page.scaleBy(compression_factor)
-            writer.add_page(page)
+            writer.addPage(page)
 
-    with open(output_file, "wb") as file:
-        writer.write(file)
+        with open(output_file, "wb") as output:
+            writer.write(output)
 
 st.title("PDF Compressor")
 
