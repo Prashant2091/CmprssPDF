@@ -12,7 +12,9 @@ def compress_pdf(uploaded_file, compression_factor):
         page.scaleBy(compression_factor)
         pdf_writer.addPage(page)
 
-    return pdf_writer
+    output_buffer = io.BytesIO()
+    pdf_writer.write(output_buffer)
+    return output_buffer.getvalue()
 
 def main():
     st.title("PDF Compressor")
@@ -23,20 +25,12 @@ def main():
     if uploaded_file is not None:
         compression_factor = st.slider("Compression Factor", 0.1, 1.0, 0.5, 0.1)
 
-        if st.button("Compress"):
-            compressed_pdf = compress_pdf(uploaded_file, compression_factor)
-
-            # Save the compressed PDF to a bytes buffer
-            output_buffer = io.BytesIO()
-            compressed_pdf.write(output_buffer)
-            output_buffer.seek(0)
-
-            # Encode the PDF content in base64
-            encoded_pdf = base64.b64encode(output_buffer.read()).decode()
+        if st.button("Compress and Download"):
+            compressed_pdf_content = compress_pdf(uploaded_file, compression_factor)
 
             # Provide a custom button label and link to trigger download
             st.markdown(
-                f'<a href="data:application/pdf;base64,{encoded_pdf}" download="compressed_pdf.pdf">Download Compressed PDF</a>',
+                f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf_content).decode()}" download="compressed_pdf.pdf">Download Compressed PDF</a>',
                 unsafe_allow_html=True,
             )
 
