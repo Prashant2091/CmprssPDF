@@ -8,10 +8,10 @@ def compress_pdf(input_file, output_file, compression_factor):
         reader = PyPDF2.PdfFileReader(file)
         writer = PyPDF2.PdfFileWriter()
 
-        for page_number in range(reader.getNumPages()):
+        for page_number in range(reader.numPages):
             page = reader.getPage(page_number)
             # Reduce the resolution to reduce file size
-            page.scaleBy(compression_factor)
+            page.compressContentStreams(compression_factor)
             writer.addPage(page)
 
         with open(output_file, "wb") as output:
