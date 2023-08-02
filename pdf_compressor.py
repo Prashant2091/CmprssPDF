@@ -1,26 +1,28 @@
 import streamlit as st
-import PyPDF2
+import fitz  # PyMuPDF
 from io import BytesIO
 
 def compress_pdf(input_file):
     # Create a BytesIO buffer to hold the compressed PDF
     output_buffer = BytesIO()
 
-    # Read the input PDF using PyPDF2
-    reader = PyPDF2.PdfFileReader(input_file)
+    # Read the input PDF using PyMuPDF
+    pdf_document = fitz.open(stream=input_file.read(), filetype="pdf")
 
-    # Create a new PDF writer without compression
-    writer = PyPDF2.PdfFileWriter()
+    # Create a new PDF document without compression
+    pdf_writer = fitz.open()
 
     # Copy the pages from the original PDF to the new writer
-    for page_num in range(reader.numPages):
-        page = reader.getPage(page_num)
-        writer.addPage(page)
+    for page_number in range(pdf_document.page_count):
+        page = pdf_document.load_page(page_number)
+        pdf_writer.insert_pdf(pdf_document, from_page=page_number, to_page=page_number)
 
-    # Write the new PDF to the buffer
-    writer.write(output_buffer)
+    # Save the compressed PDF to the buffer
+    pdf_writer.save(output_buffer)
+    pdf_writer.close()
+    pdf_document.close()
+
     output_buffer.seek(0)
-
     return output_buffer
 
 # Streamlit app title
