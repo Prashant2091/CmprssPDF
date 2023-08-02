@@ -4,7 +4,7 @@ from io import BytesIO
 
 # Function to compress the PDF
 def compress_pdf(input_file, compression_factor):
-    pdf_writer = PyPDF2.PdfWriter()
+    pdf_writer = PyPDF2.PdfFileWriter()
     pdf_reader = PyPDF2.PdfFileReader(input_file)
 
     for page_num in range(pdf_reader.getNumPages()):
