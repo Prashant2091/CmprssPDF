@@ -1,6 +1,7 @@
 import streamlit as st
 import PyPDF2
 from io import BytesIO
+import base64
 
 # Function to compress the PDF
 def compress_pdf(input_file):
@@ -34,4 +35,4 @@ if uploaded_file is not None:
     st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
 
     # Provide a download link for the compressed PDF
-    st.markdown(f'<a href="data:application/pdf;base64,{compressed_pdf.getvalue().decode("base64")}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
+    st.markdown(f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
