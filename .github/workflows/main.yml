@@ -3,19 +3,25 @@ import PyPDF2
 from io import BytesIO
 
 def compress_pdf(input_file, compression_factor):
-    pdf_reader = PyPDF2.PdfFileReader(input_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
-    for page_num in range(pdf_reader.getNumPages()):
-        page = pdf_reader.getPage(page_num)
-        page.scale(compression_factor, compression_factor)
-        pdf_writer.addPage(page)
+    # Get the original PDF content from the UploadedFile object
+    input_pdf = input_file.read()
 
+    # Create a BytesIO buffer and write the original PDF content to it
+    input_buffer = BytesIO(input_pdf)
+    pdf_reader = PyPDF2.PdfReader(input_buffer)
+
+    for page_num in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_num]
+        page.scale(compression_factor)
+        pdf_writer.add_page(page)
+
+    # Create a BytesIO buffer to hold the compressed PDF content
     output_buffer = BytesIO()
     pdf_writer.write(output_buffer)
     return output_buffer
-
-
+    
 # Streamlit app title
 st.title('PDF Compressor')
 
