@@ -1,11 +1,13 @@
 import streamlit as st
 import PyPDF2
+import base64
+from io import BytesIO
 
 # Function to compress the PDF
 def compress_pdf(input_file, compression_factor):
-    output_file = f"compressed_pdf_{compression_factor}.pdf"
+    output_file = BytesIO()
 
-    with open(input_file, "rb") as file:
+    with input_file as file:
         reader = PyPDF2.PdfFileReader(file)
         writer = PyPDF2.PdfFileWriter()
 
@@ -14,8 +16,8 @@ def compress_pdf(input_file, compression_factor):
             page.compressContentStreams(compression_factor)
             writer.addPage(page)
 
-        with open(output_file, "wb") as output:
-            writer.write(output)
+        writer.write(output_file)
+        output_file.seek(0)
 
     return output_file
 
@@ -31,10 +33,11 @@ if uploaded_file is not None:
     # Compression factor slider
     compression_factor = st.slider("Select Compression Factor", min_value=0, max_value=9, value=4)
 
-    # Compress the PDF and get the compressed file name
+    # Compress the PDF and get the compressed file
     compressed_file = compress_pdf(uploaded_file, compression_factor)
 
     st.write("Download Compressed PDF")
-    st.markdown(f'<a href="data:application/pdf;base64,{compressed_file}">Click here to download</a>', unsafe_allow_html=True)
+    compressed_file_base64 = base64.b64encode(compressed_file.read()).decode("utf-8")
+    st.markdown(f'<a href="data:application/pdf;base64,{compressed_file_base64}" download="compressed_pdf.pdf">Click here to download</a>', unsafe_allow_html=True)
 
-    st.write("Compressed File Size:", round(compressed_file.size / 1024, 2), "KB")
+    st.write("Compressed File Size:", round(len(compressed_file_base64) / 1024, 2), "KB")
