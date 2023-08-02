@@ -16,12 +16,17 @@ def compress_pdf(input_file, compression_factor=1):
     # Increase compression by reducing image quality
     for page_num in range(writer.getNumPages()):
         page = writer.getPage(page_num)
-        for obj in page['/Resources']['/XObject'].values():
-            if obj['/Subtype'] == '/Image':
-                obj.getObject().update({
-                    PyPDF2.generic.createStringObject('/Filter'): PyPDF2.generic.createStringObject('/DCTDecode'),
-                    PyPDF2.generic.createStringObject('/Q'): PyPDF2.generic.createStringObject(str(compression_factor))
-                })
+        resources = page['/Resources']
+        if '/XObject' in resources:
+            x_objects = resources['/XObject']
+            for obj in x_objects:
+                obj = x_objects[obj]
+                if obj['/Subtype'] == '/Image':
+                    obj = obj.getObject()  # Resolve the IndirectObject
+                    obj.update({
+                        PyPDF2.generic.createStringObject('/Filter'): PyPDF2.generic.createStringObject('/DCTDecode'),
+                        PyPDF2.generic.createStringObject('/Q'): PyPDF2.generic.createStringObject(str(compression_factor))
+                    })
 
     output_buffer = BytesIO()
     writer.write(output_buffer)
