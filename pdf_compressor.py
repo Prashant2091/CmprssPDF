@@ -24,7 +24,7 @@ def main():
         compression_factor = st.slider("Compression Factor", 0.0, 1.0, 0.5, 0.01)
 
         if st.button("Compress"):
-            compressed_pdf = compress_pdf(uploaded_file, compression_factore)
+            compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
             st.markdown(
                 f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}" download="compressed.pdf">Download Compressed PDF</a>',
