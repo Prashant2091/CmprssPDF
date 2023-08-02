@@ -1,20 +1,19 @@
 import streamlit as st
 import base64
 import tempfile
-import subprocess
-import fitz
+import PyPDF2
 
 # Function to compress the PDF
 def compress_pdf(uploaded_file, compression_factor):
-    input_pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    output_pdf = fitz.open()
+    pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
+    pdf_writer = PyPDF2.PdfFileWriter()
 
-    for page_number in range(input_pdf.page_count):
-        page = input_pdf[page_number]
-        page.set_dct_filter(compression_factor)
-        output_pdf.insert_pdf(input_pdf, from_page=page_number, to_page=page_number)
+    for page_number in range(pdf_reader.getNumPages()):
+        page = pdf_reader.getPage(page_number)
+        page.compressContentStreams(compression_factor)
+        pdf_writer.addPage(page)
 
-    return output_pdf
+    return pdf_writer
 
 # Streamlit app title
 st.title('PDF Compressor')
@@ -36,7 +35,7 @@ if uploaded_file is not None:
         # Save the compressed PDF to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False)
         with open(temp_file.name, 'wb') as f:
-            compressed_pdf.save(f)
+            compressed_pdf.write(f)
 
         # Display the compressed file size
         st.write(f"Compressed File Size: {round(temp_file.stat().st_size / 1024, 2)} KB")
@@ -45,8 +44,3 @@ if uploaded_file is not None:
         with open(temp_file.name, "rb") as f:
             data = f.read()
         st.download_button(label="Download Compressed PDF", data=data, file_name="compressed_pdf.pdf")
-
-
-
-
-
