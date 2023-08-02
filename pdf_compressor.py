@@ -1,25 +1,35 @@
+Copy code
 import streamlit as st
-from PyPDF2 import PdfReader, PdfWriter
 import base64
-from io import BytesIO
+import PyPDF4
 
 # Function to compress the PDF
 def compress_pdf(uploaded_file, compression_factor):
-    pdf_reader = PdfReader(uploaded_file)
     output_buffer = BytesIO()
 
-    pdf_writer = PdfWriter()
-    for page in pdf_reader.pages:
-        pdf_writer.add_page(page)
-        if "/XObject" in page:
-            for obj in page["/XObject"]:
-                if page["/XObject"][obj]["/Subtype"] == "/Image":
-                    img = page["/XObject"][obj]
-                    img._data = img._data.encode('zip')
-                    img._data = img._data.decode()
-                    page["/XObject"][obj] = img
+    pdf_reader = PyPDF4.PdfReader(uploaded_file)
+    pdf_writer = PyPDF4.PdfWriter()
+
+    for page_number in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_number]
+
+        # Get the compressed PDF page
+        compressed_page = pdf_writer.add_blank_page(
+            width=page.mediaBox.getWidth(), height=page.mediaBox.getHeight()
+        )
+        compressed_page.merge_page(page)
+
+        # Compressing the image with the specified compression factor
+        xObject = compressed_page["/Resources"]["/XObject"].get_object()
+        for obj in xObject:
+            if xObject[obj]["/Subtype"] == "/Image":
+                xObject[obj].update({
+                    PyPDF4.generic.NameObject("/Filter"): PyPDF4.generic.NameObject("/FlateDecode"),
+                    PyPDF4.generic.NameObject("/Q"): PyPDF4.generic.createStringObject(str(compression_factor))
+                })
 
     pdf_writer.write(output_buffer)
+    pdf_writer.close()
 
     return output_buffer
 
