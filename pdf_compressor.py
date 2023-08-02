@@ -3,13 +3,13 @@ import PyPDF2
 from io import BytesIO
 
 # Function to compress the PDF
-def compress_pdf(input_file, compression_factor):
+def compress_pdf(input_file):
     reader = PyPDF2.PdfFileReader(input_file)
     writer = PyPDF2.PdfFileWriter()
 
     for page_num in range(reader.numPages):
         page = reader.getPage(page_num)
-        page.compressContentStreams(compression_factor)
+        page.compressContentStreams()
         writer.addPage(page)
 
     output_buffer = BytesIO()
@@ -26,11 +26,8 @@ if uploaded_file is not None:
     # Display original file size
     st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
-    # Set the compression factor (you can adjust this value as needed)
-    compression_factor = 0.5
-
     # Compress the PDF
-    compressed_pdf = compress_pdf(uploaded_file, compression_factor)
+    compressed_pdf = compress_pdf(uploaded_file)
 
     # Display compressed file size and provide download link
     compressed_size = len(compressed_pdf.getvalue())
