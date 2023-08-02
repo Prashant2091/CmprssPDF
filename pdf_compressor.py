@@ -2,52 +2,40 @@ import streamlit as st
 import PyPDF2
 import io
 
-def compress_pdf(input_pdf, compression_factor):
-    # Create a PDF writer object
-    pdf_writer = PyPDF2.PdfWriter()
+def compress_pdf(uploaded_file, compression_factor):
+    pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
+    pdf_writer = PyPDF2.PdfFileWriter()  # Use PdfFileWriter instead of PdfWriter
 
-    # Open the input PDF file
-    with open(input_pdf, "rb") as pdf_file:
-        # Create a PDF reader object
-        pdf_reader = PyPDF2.PdfFileReader(pdf_file)
+    for page_num in range(pdf_reader.numPages):
+        page = pdf_reader.getPage(page_num)
+        page.scaleBy(compression_factor)
+        pdf_writer.addPage(page)
 
-        # Get the total number of pages in the PDF
-        total_pages = pdf_reader.getNumPages()
-
-        # Process each page
-        for page_num in range(total_pages):
-            # Get the current page
-            page = pdf_reader.getPage(page_num)
-
-            # Apply compression to the page
-            page.compressContentStreams(compression_factor)
-
-            # Add the compressed page to the PDF writer
-            pdf_writer.addPage(page)
-
-        # Write the compressed PDF to a BytesIO buffer
-        output_buffer = io.BytesIO()
-        pdf_writer.write(output_buffer)
-
-    return output_buffer
+    return pdf_writer
 
 def main():
     st.title("PDF Compressor")
+    st.write("Upload a PDF file and choose the compression factor.")
 
-    # File uploader widget
     uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
     if uploaded_file is not None:
-        # Get the compression factor from the user
-        compression_factor = st.slider("Select Compression Factor", min_value=0, max_value=100, value=50)
+        compression_factor = st.slider("Compression Factor", 0.1, 1.0, 0.5, 0.1)
 
-        # Check if the user clicked the "Compress" button
         if st.button("Compress"):
-            # Compress the PDF
             compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
-            # Download the compressed PDF
-            st.download_button("Download Compressed PDF", data=compressed_pdf.getvalue(), file_name="compressed.pdf")
+            # Save the compressed PDF to a bytes buffer
+            output_buffer = io.BytesIO()
+            compressed_pdf.write(output_buffer)
+            output_buffer.seek(0)
+
+            st.download_button(
+                label="Download Compressed PDF",
+                data=output_buffer,
+                file_name="compressed_pdf.pdf",
+                mime="application/pdf",
+            )
 
 if __name__ == "__main__":
     main()
