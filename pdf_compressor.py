@@ -4,22 +4,14 @@ import io
 import base64
 
 def compress_content_stream(content_stream, compression_factor=0.5):
-    if isinstance(content_stream, PyPDF2.pdf.EncodedStreamObject):
-        content_stream = content_stream.decodedContent()
-
-    content_stream = content_stream.strip()  # Strip leading and trailing spaces
-    length = len(content_stream)
-
-    if length == 0:
-        return content_stream
-
+    # Compress the content stream using FlateEncode filter
     compress_stream = io.BytesIO()
     with PyPDF2.filters.FlateEncode(compress_stream, compression_factor=9) as encoder:
         encoder.write(content_stream)
 
     compressed_content_stream = compress_stream.getvalue()
 
-    if len(compressed_content_stream) >= length:
+    if len(compressed_content_stream) >= len(content_stream):
         return content_stream
 
     return compressed_content_stream
@@ -29,9 +21,9 @@ def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
-        compressed_content = compress_content_stream(page['/Contents'], compression_factor)
-        page.compressContentStreams()  # This compresses all other streams in the page
-        page.__setitem__('/Contents', compressed_content)
+        compressed_content = compress_content_stream(page['/Contents'].get_object(), compression_factor)
+        page.compressContentStreams()
+        page.__setitem__('/Contents', PyPDF2.generic.ByteStringObject(compressed_content))
         pdf_writer.add_page(page)
 
     pdf_bytes = io.BytesIO()
@@ -62,3 +54,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
