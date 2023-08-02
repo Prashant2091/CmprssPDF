@@ -18,8 +18,8 @@ def compress_page(page, compression_factor=0.5):
     return page
 
 def compress_pdf(uploaded_file, compression_factor=0.5):
-    pdf_reader = PyPDF2.PdfReader(uploaded_file)
-    pdf_writer = PyPDF2.PdfWriter()
+    pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
+    pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
         compressed_page = compress_page(page, compression_factor)
