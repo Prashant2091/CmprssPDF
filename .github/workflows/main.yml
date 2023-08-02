@@ -1,24 +1,40 @@
-# .streamlit/main.yml
-name: My Streamlit App
-description: This is a description of my Streamlit app.
+import streamlit as st
+import PyPDF2
+from io import BytesIO
 
-# Specify the Streamlit app file and any additional files/directories required by your app
-# Replace 'app.py' with the filename of your Streamlit app
-app:
-  command:
-    - streamlit run
-    - pdf_compressor.py
+def compress_pdf(input_file, compression_factor):
+    pdf_reader = PyPDF2.PdfReader(input_file)
+    pdf_writer = PyPDF2.PdfWriter()
 
-# Specify the Streamlit version you are using (optional)
-# If not specified, it will use the default Streamlit version on Streamlit Sharing
-#streamlit_version: "1.0.0"
+    for page_num in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_num]
+        page.scale(compression_factor, compression_factor)
+        pdf_writer.add_page(page)
 
-# Specify the dependencies required for your app
-# You can specify the libraries needed by your app here
-# For example, if you need pandas, uncomment the following line:
-# dependencies:
-   - PyPDF2
+    output_buffer = BytesIO()
+    pdf_writer.write(output_buffer)
+    return output_buffer
 
-# Specify any environment variables required for your app (optional)
-#env:
-#  MY_ENV_VAR: "my_value"
+# Streamlit app title
+st.title('PDF Compressor')
+
+# File uploader widget
+uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+
+if uploaded_file is not None:
+    # Display original file size
+    st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
+
+    # Compression factor slider
+    compression_factor = st.slider("Select Compression Factor", 0.1, 1.0, 0.5, 0.1)
+
+    if st.button("Compress PDF"):
+        # Compress the PDF
+        compressed_pdf = compress_pdf(uploaded_file, compression_factor)
+
+        # Display compressed file size and provide download link
+        compressed_size = len(compressed_pdf.getvalue())
+        st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
+        st.download_button(label="Download Compressed PDF",
+                           data=compressed_pdf.getvalue(),
+                           file_name="compressed.pdf")
