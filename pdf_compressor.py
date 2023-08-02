@@ -17,7 +17,9 @@ def compress_pdf(input_file, compression_factor):
     return output_buffer
 
 def compress_page(page, compression_factor):
-    xObject = page['/Resources']['/XObject'].get_object()
+    xObject = page['/Resources']['/XObject']
+    if isinstance(xObject, PyPDF2.generic.IndirectObject):
+        xObject = xObject.get_object()
     for obj in xObject:
         if xObject[obj]['/Subtype'] == '/Image':
             if '/Filter' in xObject[obj]:
@@ -46,6 +48,7 @@ if uploaded_file is not None:
 
     # Display compressed file size and provide download link
     compressed_size = len(compressed_pdf.getvalue())
+    st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
     st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
     # Provide download link for the compressed PDF
     href = f"data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}"
