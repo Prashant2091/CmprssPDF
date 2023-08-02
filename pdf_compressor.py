@@ -1,18 +1,19 @@
 import streamlit as st
 import PyPDF2
 import io
+import base64
 
 def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfReader(uploaded_file)
-    output_buffer = io.BytesIO()
-
     pdf_writer = PyPDF2.PdfWriter()
 
     for page in pdf_reader.pages:
         compressed_page = page.compress(compression_factor)
         pdf_writer.add_page(compressed_page)
 
+    output_buffer = io.BytesIO()
     pdf_writer.write(output_buffer)
+
     return output_buffer
 
 def main():
@@ -30,7 +31,7 @@ def main():
             compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
             st.subheader("Compressed File Size:")
-            st.write(f"{compressed_pdf.getbuffer().nbytes / 1024:.2f} KB")
+            st.write(f"{len(compressed_pdf.getbuffer()) / 1024:.2f} KB")
 
             st.markdown(
                 f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}" download="compressed.pdf">Download Compressed PDF</a>',
@@ -39,9 +40,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
