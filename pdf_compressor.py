@@ -2,15 +2,21 @@ import streamlit as st
 import PyPDF2
 from io import BytesIO
 
-# Function to compress the PDF
+# Function to compress a single page of the PDF
+def compress_page(page, compression_factor):
+    xObject = page['/Resources']['/XObject'].get_object()
+    for obj in xObject:
+        xObject[obj].get_object().compressContentStreams()
+    return page
+
+# Function to compress the entire PDF
 def compress_pdf(input_file, compression_factor):
-    reader = PyPDF2.PdfFileReader(input_file)
+    pdf_reader = PyPDF2.PdfFileReader(input_file)
     writer = PyPDF2.PdfFileWriter()
 
-    for page_num in range(reader.numPages):
-        page = reader.getPage(page_num)
-        page.compressContentStreams(compression_factor)
-        writer.addPage(page)
+    for page_num in range(pdf_reader.numPages):
+        page = pdf_reader.getPage(page_num)
+        writer.addPage(compress_page(page, compression_factor))
 
     output_buffer = BytesIO()
     writer.write(output_buffer)
@@ -27,7 +33,7 @@ if uploaded_file is not None:
     st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
     # Compress the PDF
-    compression_factor = st.slider("Select Compression Factor", min_value=0, max_value=9, value=4)
+    compression_factor = st.slider("Compression Factor", min_value=0, max_value=9, value=1)
     compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
     # Display compressed file size and provide download link
