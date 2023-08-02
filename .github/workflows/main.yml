@@ -17,19 +17,23 @@ def compress_pdf(input_file, compression_factor):
 
 # Function to compress a single page
 def compress_page(page, compression_factor):
-    if '/Resources' in page and '/XObject' in page['/Resources']:
-        xObject = page['/Resources']['/XObject'].resolve()
-        for obj in xObject:
-            if xObject[obj]['/Subtype'] == '/Image':
-                size = (xObject[obj]['/Width'], xObject[obj]['/Height'])
-                data = xObject[obj].get_object()['/Filter']
-                if data == '/FlateDecode':
-                    image = xObject[obj].get_object()
-                    image_data = image.get_data()
-                    image_stream = BytesIO(image_data)
-                    img = PyPDF2.PdfImageXObject(image_stream)
-                    img.compress(compression_factor)
-                    xObject[obj] = img
+    if '/Resources' in page:
+        resources = page['/Resources']
+        if '/XObject' in resources:
+            xObject = resources['/XObject'].resolve()
+            if isinstance(xObject, PyPDF2.generic.IndirectObject):
+                xObject = xObject.get_object()
+            for obj in xObject:
+                if xObject[obj]['/Subtype'] == '/Image':
+                    size = (xObject[obj]['/Width'], xObject[obj]['/Height'])
+                    data = xObject[obj].get_object()['/Filter']
+                    if data == '/FlateDecode':
+                        image = xObject[obj].get_object()
+                        image_data = image.get_data()
+                        image_stream = BytesIO(image_data)
+                        img = PyPDF2.PdfImageXObject(image_stream)
+                        img.compress(compression_factor)
+                        xObject[obj] = img
     return page
 
 # Streamlit app title
