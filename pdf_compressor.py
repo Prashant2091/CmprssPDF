@@ -30,22 +30,23 @@ if uploaded_file is not None:
     # Slider for compression factor
     compression_factor = st.slider("Select Compression Factor", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
 
-    # Save the uploaded PDF to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        temp_file.write(uploaded_file.read())
+    # Create a temporary directory to save the uploaded PDF
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_file_path = os.path.join(temp_dir, uploaded_file.name)
+        with open(temp_file_path, "wb") as temp_file:
+            temp_file.write(uploaded_file.read())
 
-    # Compress the PDF file
-    compressed_file = f"compressed_{uploaded_file.name}"
-    compress_pdf(temp_file.name, compressed_file, compression_factor)
+        # Compress the PDF file
+        compressed_file = f"compressed_{uploaded_file.name}"
+        compress_pdf(temp_file_path, compressed_file, compression_factor)
 
-    # Display the compressed file size
-    compressed_size = round(os.path.getsize(compressed_file) / 1024, 2)  # Convert to KB
-    st.write(f"Download Compressed PDF (Compression Factor: {compression_factor:.1f})")
-    st.download_button(
-        label=f"Compressed File Size: {compressed_size} KB",
-        data=open(compressed_file, "rb").read(),
-        file_name=compressed_file,
-    )
+        # Display the compressed file size
+        compressed_size = round(os.path.getsize(compressed_file) / 1024, 2)  # Convert to KB
+        st.write(f"Download Compressed PDF (Compression Factor: {compression_factor:.1f})")
+        st.download_button(
+            label=f"Compressed File Size: {compressed_size} KB",
+            data=open(compressed_file, "rb").read(),
+            file_name=compressed_file,
+        )
 
-    # Remove the temporary file
-    os.remove(temp_file.name)
+    # The temporary directory will be automatically deleted after exiting the `with` block
