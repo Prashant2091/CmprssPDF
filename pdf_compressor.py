@@ -1,63 +1,40 @@
 import streamlit as st
 import PyPDF2
-import io
-import img2pdf
-import subprocess
 
+# Function to compress the PDF
 def compress_pdf(input_file, compression_factor):
-    # Convert the PDF pages to images and compress them using ImageMagick
-    images = []
-    reader = PyPDF2.PdfFileReader(input_file)
-    temp_files = []
+    output_file = f"compressed_pdf_{compression_factor}.pdf"
 
-    for page_number in range(reader.numPages):
-        page = reader.getPage(page_number)
-        pdf_page_bytes = io.BytesIO()
-        pdf_writer = PyPDF2.PdfFileWriter()
-        pdf_writer.addPage(page)
-        pdf_writer.write(pdf_page_bytes)
-        pdf_page_bytes.seek(0)
+    with open(input_file, "rb") as file:
+        reader = PyPDF2.PdfFileReader(file)
+        writer = PyPDF2.PdfFileWriter()
 
-        image_file = io.BytesIO()
-        subprocess.run(['convert', '-density', '300', '-', '-quality', str(compression_factor * 100), 'JPEG:-'],
-                       input=pdf_page_bytes.read(), stdout=image_file, check=True, text=True)
-        image_file.seek(0)
+        for page_num in range(reader.getNumPages()):
+            page = reader.getPage(page_num)
+            page.compressContentStreams(compression_factor)
+            writer.addPage(page)
 
-        temp_files.append(image_file)
-        images.append(image_file)
+        with open(output_file, "wb") as output:
+            writer.write(output)
 
-    # Create a PDF from the compressed images
-    compressed_pdf_bytes = io.BytesIO()
-    img2pdf.convert(images, outputstream=compressed_pdf_bytes)
-    compressed_pdf_bytes.seek(0)
+    return output_file
 
-    # Close the temporary image files
-    for temp_file in temp_files:
-        temp_file.close()
-
-    return compressed_pdf_bytes
-
+# Streamlit app title
 st.title("PDF Compressor")
 
 # File uploader widget
 uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
 if uploaded_file is not None:
-    # Display the original file size
-    original_size = round(len(uploaded_file.read()) / 1024, 2)  # Convert to KB
-    st.write(f"Original File Size: {original_size} KB")
+    st.write("Original File Size:", round(uploaded_file.size / 1024, 2), "KB")
 
-    # Slider for compression factor
-    compression_factor = st.slider("Select Compression Factor", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
+    # Compression factor slider
+    compression_factor = st.slider("Select Compression Factor", min_value=0, max_value=9, value=4)
 
-    # Compress the PDF file
+    # Compress the PDF and get the compressed file name
     compressed_file = compress_pdf(uploaded_file, compression_factor)
 
-    # Display the compressed file size
-    compressed_size = round(len(compressed_file.getvalue()) / 1024, 2)  # Convert to KB
-    st.write(f"Download Compressed PDF (Compression Factor: {compression_factor:.1f})")
-    st.download_button(
-        label=f"Compressed File Size: {compressed_size} KB",
-        data=compressed_file.getvalue(),
-        file_name="compressed.pdf",
-    )
+    st.write("Download Compressed PDF")
+    st.markdown(f'<a href="data:application/pdf;base64,{compressed_file}">Click here to download</a>', unsafe_allow_html=True)
+
+    st.write("Compressed File Size:", round(compressed_file.size / 1024, 2), "KB")
