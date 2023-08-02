@@ -9,8 +9,7 @@ def compress_pdf(uploaded_file, compression_factor=0.5):
 
     for page_number in range(pdf_reader.getNumPages()):
         page = pdf_reader.getPage(page_number)
-        compressed_page = page.compressContentStreams()
-        pdf_writer.addPage(compressed_page)
+        pdf_writer.addPage(page)
 
     compressed_pdf = io.BytesIO()
     pdf_writer.write(compressed_pdf)
