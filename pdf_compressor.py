@@ -3,37 +3,24 @@ import PyPDF2
 import io
 import base64
 
-def compress_content_stream(content_stream, compression_factor=0.5):
-    # Compress the content stream using FlateEncode filter
-    compress_stream = io.BytesIO()
-    with PyPDF2.filters.FlateEncode(compress_stream, compression_factor=9) as encoder:
-        encoder.write(content_stream)
-
-    compressed_content_stream = compress_stream.getvalue()
-
-    if len(compressed_content_stream) >= len(content_stream):
-        return content_stream
-
-    return compressed_content_stream
-
 def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
-        content_streams = page.getContents()
-        if not isinstance(content_streams, list):
-            content_streams = [content_streams]
+        # Create a new page with the same media box as the original
+        compressed_page = pdf_writer.add_blank_page(
+            width=page.mediaBox.getWidth(),
+            height=page.mediaBox.getHeight()
+        )
 
-        compressed_streams = [compress_content_stream(stream, compression_factor) for stream in content_streams]
-        page.setContents(compressed_streams)
+        # Copy the content from the original page to the new compressed page
+        compressed_page.merge_page(page)
 
-        page.compressContentStreams()
-        pdf_writer.add_page(page)
-
-    pdf_bytes = io.BytesIO()
-    pdf_writer.write(pdf_bytes)
-    return pdf_bytes
+    # Create a BytesIO object to hold the compressed PDF data
+    compressed_pdf = io.BytesIO()
+    pdf_writer.write(compressed_pdf)
+    return compressed_pdf
 
 def main():
     st.title("PDF Compressor")
