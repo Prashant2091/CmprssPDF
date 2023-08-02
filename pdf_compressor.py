@@ -2,23 +2,24 @@ import streamlit as st
 import PyPDF2
 from io import BytesIO
 
-def compress_pdf(input_file, compression_factor):
+def compress_pdf(input_file):
+    # Create a BytesIO buffer to hold the compressed PDF
+    output_buffer = BytesIO()
+
+    # Read the input PDF using PyPDF2
     reader = PyPDF2.PdfFileReader(input_file)
+
+    # Create a new PDF writer without compression
     writer = PyPDF2.PdfFileWriter()
 
-    # Save pages to an intermediate PDF file with a different compression level
-    with open('temp.pdf', 'wb') as f:
-        for page_num in range(reader.numPages):
-            page = reader.getPage(page_num)
-            writer.addPage(page)
-        
-        # Set the compression level for the entire document (between 0 and 1)
-        writer.setCompression(compression_factor)
-        writer.write(f)
+    # Copy the pages from the original PDF to the new writer
+    for page_num in range(reader.numPages):
+        page = reader.getPage(page_num)
+        writer.addPage(page)
 
-    # Read the intermediate PDF file back to BytesIO
-    with open('temp.pdf', 'rb') as f:
-        output_buffer = BytesIO(f.read())
+    # Write the new PDF to the buffer
+    writer.write(output_buffer)
+    output_buffer.seek(0)
 
     return output_buffer
 
@@ -32,11 +33,8 @@ if uploaded_file is not None:
     # Display original file size
     st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
-    # Set the desired compression factor (between 0 and 1)
-    compression_factor = 0.3  # Adjust this value to achieve higher compression
-
     # Compress the PDF
-    compressed_pdf = compress_pdf(uploaded_file, compression_factor)
+    compressed_pdf = compress_pdf(uploaded_file)
 
     # Display compressed file size and provide download link
     compressed_size = len(compressed_pdf.getvalue())
