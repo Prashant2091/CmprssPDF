@@ -10,6 +10,11 @@ def compress_pdf(input_file):
 
     for page_number in range(pdf_reader.getNumPages()):
         page = pdf_reader.getPage(page_number)
+
+        # Compress content streams using "FlateDecode" filter (lossless compression)
+        page.compressContentStreams()
+
+        # Add the compressed page to the new PDF
         pdf_writer.addPage(page)
 
     compressed_pdf = BytesIO()
