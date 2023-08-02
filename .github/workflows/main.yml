@@ -18,7 +18,7 @@ def compress_pdf(input_file, compression_factor):
 # Function to compress a single page
 def compress_page(page, compression_factor):
     if '/Resources' in page and '/XObject' in page['/Resources']:
-        xObject = page['/Resources']['/XObject'].getObject()
+        xObject = page['/Resources']['/XObject'].resolve()
         for obj in xObject:
             if xObject[obj]['/Subtype'] == '/Image':
                 size = (xObject[obj]['/Width'], xObject[obj]['/Height'])
