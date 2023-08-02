@@ -31,9 +31,8 @@ if uploaded_file is not None:
     compression_factor = st.slider("Select Compression Factor", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
 
     # Save the uploaded PDF to a temporary file
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    temp_file.write(uploaded_file.read())
-    temp_file.close()
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(uploaded_file.read())
 
     # Compress the PDF file
     compressed_file = f"compressed_{uploaded_file.name}"
