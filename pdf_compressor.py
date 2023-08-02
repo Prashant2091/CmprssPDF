@@ -11,7 +11,7 @@ def compress_pdf(input_file, compression_factor):
     # Set compression factor for all pages
     for page_num in range(pdf_reader.getNumPages()):
         page = writer.getPage(page_num)
-        page.compressContentStreams(compression_factor)
+        page.compressContentStreams()
 
     output_buffer = BytesIO()
     writer.write(output_buffer)
