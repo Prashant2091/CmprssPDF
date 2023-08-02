@@ -34,7 +34,7 @@ if uploaded_file is not None:
 
     # Display compressed file size
     compressed_size = len(compressed_pdf.getvalue())
-    st.write(f"Compressed File Size: {compressed_size / 256:.2f} KB")
+    st.write(f"Compressed File Size: {compressed_size / 32:.2f} KB")
 
     # Provide download link for the compressed PDF
     href = f"data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}"
