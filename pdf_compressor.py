@@ -1,6 +1,7 @@
 import streamlit as st
 import PyPDF2
 import io
+import base64
 
 def compress_pdf(uploaded_file, compression_factor):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
@@ -30,9 +31,12 @@ def main():
             compressed_pdf.write(output_buffer)
             output_buffer.seek(0)
 
+            # Encode the PDF content in base64
+            encoded_pdf = base64.b64encode(output_buffer.read()).decode()
+
             # Provide a custom button label and link to trigger download
             st.markdown(
-                f'<a href="data:application/pdf;base64,{output_buffer.read().encode("base64").decode()}">Download Compressed PDF</a>',
+                f'<a href="data:application/pdf;base64,{encoded_pdf}" download="compressed_pdf.pdf">Download Compressed PDF</a>',
                 unsafe_allow_html=True,
             )
 
