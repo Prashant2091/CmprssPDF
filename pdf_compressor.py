@@ -28,7 +28,7 @@ if uploaded_file is not None:
     st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
     # Compression factor (adjust as needed, e.g., 0 for no compression, 1 for max compression)
-    compression_factor = 1
+    compression_factor = 2
 
     # Compress the PDF
     compressed_pdf = compress_pdf(uploaded_file, compression_factor)
