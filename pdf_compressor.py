@@ -4,10 +4,15 @@ import io
 import base64
 
 def compress_page(page, compression_factor=0.5):
-    content = page.get_object()
-    compressed_content = PyPDF2.generic.NameObject("/FlateDecode")
-    content.get_object()["/Filter"] = compressed_content
-    content.get_object().compress(compression_factor)
+    content_stream = page['/Contents'].get_object()
+    if isinstance(content_stream, PyPDF2.pdf.StreamObject):
+        content_stream = PyPDF2.pdf.ContentStream(content_stream, page.pdf)
+
+    filters = content_stream.filters
+    if "/FlateDecode" not in filters:
+        filters.append("/FlateDecode")
+
+    content_stream.filters = filters
     return page
 
 def compress_pdf(uploaded_file, compression_factor=0.5):
