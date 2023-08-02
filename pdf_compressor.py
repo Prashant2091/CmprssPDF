@@ -7,8 +7,10 @@ def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
-    for page in pdf_reader.pages:
-        pdf_writer.add_page(page)
+    for page_number in range(pdf_reader.getNumPages()):
+        page = pdf_reader.getPage(page_number)
+        page.compressContentStreams(compression_factor)
+        pdf_writer.addPage(page)
 
     compressed_pdf = io.BytesIO()
     pdf_writer.write(compressed_pdf)
@@ -25,11 +27,8 @@ def main():
 
         if st.button("Compress"):
             compressed_pdf = compress_pdf(uploaded_file, compression_factor)
-
-            st.markdown(
-                f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}" download="compressed.pdf">Download Compressed PDF</a>',
-                unsafe_allow_html=True
-            )
+            href = f"data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}"
+            st.markdown(f'<a href="{href}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
