@@ -29,7 +29,9 @@ if uploaded_file is not None:
     # Compress the PDF
     compressed_pdf = compress_pdf(uploaded_file)
 
-    # Display compressed file size and provide download link
+    # Display compressed file size
     compressed_size = len(compressed_pdf.getvalue())
     st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
-    st.download_button(label="Download Compressed PDF", data=compressed_pdf.getvalue(), file_name="compressed.pdf")
+
+    # Provide download link for the compressed PDF
+    st.markdown(f'<a href="data:application/pdf;base64,{compressed_pdf.getvalue().decode("base64")}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
