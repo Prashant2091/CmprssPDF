@@ -1,34 +1,38 @@
 import streamlit as st
 import PyPDF2
-import io
 import base64
+from io import BytesIO
 
-def compress_pdf(uploaded_file, compression_factor=0.5):
-    pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
-    pdf_writer = PyPDF2.PdfFileWriter()
+# Function to compress the PDF
+def compress_pdf(input_file):
+    reader = PyPDF2.PdfFileReader(input_file)
+    writer = PyPDF2.PdfFileWriter()
 
-    for page_number in range(pdf_reader.getNumPages()):
-        page = pdf_reader.getPage(page_number)
-        page.compressContentStreams(compression_factor)
-        pdf_writer.addPage(page)
+    for page_num in range(reader.numPages):
+        page = reader.getPage(page_num)
+        page.compressContentStreams()
+        writer.addPage(page)
 
-    compressed_pdf = io.BytesIO()
-    pdf_writer.write(compressed_pdf)
-    compressed_pdf.seek(0)
+    output_buffer = BytesIO()
+    writer.write(output_buffer)
+    return output_buffer
 
-    return compressed_pdf
+# Streamlit app title
+st.title('PDF Compressor')
 
-def main():
-    st.title("PDF Compressor")
+# File uploader widget
+uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
-    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
-    if uploaded_file:
-        compression_factor = st.slider("Compression Factor", 0.0, 1.0, 0.5, 0.01)
+if uploaded_file is not None:
+    # Display original file size
+    st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
-        if st.button("Compress"):
-            compressed_pdf = compress_pdf(uploaded_file, compression_factor)
-            href = f"data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}"
-            st.markdown(f'<a href="{href}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
+    # Compress the PDF
+    compressed_pdf = compress_pdf(uploaded_file)
 
-if __name__ == "__main__":
-    main()
+    # Display compressed file size
+    compressed_size = len(compressed_pdf.getvalue())
+    st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
+
+    # Provide download link for the compressed PDF
+    st.markdown(f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
