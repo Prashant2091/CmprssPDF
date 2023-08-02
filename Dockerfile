@@ -9,10 +9,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy your Streamlit app code into the container
-COPY app.py .
+COPY pdf_compressor.py.
 
 # Expose the Streamlit port
 EXPOSE 8501
 
 # Set the entry point to run your Streamlit app
-CMD ["streamlit", "run", "--server.enableCORS", "false", "app.py"]
+CMD ["streamlit", "run", "pdf_compressor.py"]
