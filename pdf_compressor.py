@@ -3,18 +3,13 @@ import PyPDF2
 import io
 import base64
 
-def compress_page(page, compression_factor):
-    content = page.get_object()
-    content.compress(compression_factor)
-    return page
-
 def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
-        compressed_page = compress_page(page, compression_factor)
-        pdf_writer.add_page(compressed_page)
+        page.compressContentStreams(compression_factor)
+        pdf_writer.add_page(page)
 
     compressed_pdf = io.BytesIO()
     pdf_writer.write(compressed_pdf)
@@ -44,8 +39,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
