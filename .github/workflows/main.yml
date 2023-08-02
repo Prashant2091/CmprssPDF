@@ -15,6 +15,7 @@ def compress_pdf(input_file, compression_factor):
     pdf_writer.write(output_buffer)
     return output_buffer
 
+
 # Streamlit app title
 st.title('PDF Compressor')
 
