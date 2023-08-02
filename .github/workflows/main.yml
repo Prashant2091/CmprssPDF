@@ -1,30 +1,70 @@
-name: Deploy Streamlit App
+# .streamlit/main.yml
+name: My Streamlit App
+description: This is a description of my Streamlit app.
 
-on:
-  push:
-    branches:
-      - main
+# Specify the Streamlit app file and any additional files/directories required by your app
+# Replace 'app.py' with the filename of your Streamlit app
+app:
+  command:
+    - streamlit run
+    - # .streamlit/main.yml
+name: My Streamlit App
+description: This is a description of my Streamlit app.
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+# Specify the Streamlit app file and any additional files/directories required by your app
+# Replace 'app.py' with the filename of your Streamlit app
+app:
+  command:
+    - streamlit run
+    - # .streamlit/main.yml
+name: My Streamlit App
+description: This is a description of my Streamlit app.
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+# Specify the Streamlit app file and any additional files/directories required by your app
+# Replace 'app.py' with the filename of your Streamlit app
+app:
+  command:
+    - streamlit run
+    - pdf_compressor.py
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v1
-      with:
-        username: ${{ secrets.prashantjack1991 }}
-        password: ${{ secrets.Prashant@32 }}
+# Specify the Streamlit version you are using (optional)
+# If not specified, it will use the default Streamlit version on Streamlit Sharing
+#streamlit_version: "1.0.0"
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v2
-      with:
-        context: .
-        push: true
-        tags: username/repo-name:latest # Replace 'username' and 'repo-name' with your Docker Hub username and desired image name
+# Specify the dependencies required for your app
+# You can specify the libraries needed by your app here
+# For example, if you need pandas, uncomment the following line:
+# dependencies:
+   - fit
 
-    - name: Deploy to Cloud Platform (e.g., AWS ECS, GCP Kubernetes Engine, etc.)
-      # Add steps here to deploy the Docker image to your preferred cloud platform
+# Specify any environment variables required for your app (optional)
+#env:
+#  MY_ENV_VAR: "my_value"
+
+# Specify the Streamlit version you are using (optional)
+# If not specified, it will use the default Streamlit version on Streamlit Sharing
+#streamlit_version: "1.0.0"
+
+# Specify the dependencies required for your app
+# You can specify the libraries needed by your app here
+# For example, if you need pandas, uncomment the following line:
+# dependencies:
+#   - pandas
+
+# Specify any environment variables required for your app (optional)
+#env:
+#  MY_ENV_VAR: "my_value"
+
+# Specify the Streamlit version you are using (optional)
+# If not specified, it will use the default Streamlit version on Streamlit Sharing
+#streamlit_version: "1.0.0"
+
+# Specify the dependencies required for your app
+# You can specify the libraries needed by your app here
+# For example, if you need pandas, uncomment the following line:
+# dependencies:
+#   - pandas
+
+# Specify any environment variables required for your app (optional)
+#env:
+#  MY_ENV_VAR: "my_value"
