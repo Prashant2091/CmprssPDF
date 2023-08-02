@@ -6,13 +6,18 @@ def compress_pdf(input_file, compression_factor):
     reader = PyPDF2.PdfFileReader(input_file)
     writer = PyPDF2.PdfFileWriter()
 
-    for page_num in range(reader.numPages):
-        page = reader.getPage(page_num)
-        page.compressContentStreams(compression_factor)
-        writer.addPage(page)
+    # Save pages to an intermediate PDF file with a different compression level
+    with open('temp.pdf', 'wb') as f:
+        for page_num in range(reader.numPages):
+            page = reader.getPage(page_num)
+            page.compressContentStreams(compression_factor)
+            writer.addPage(page)
+        writer.write(f)
 
-    output_buffer = BytesIO()
-    writer.write(output_buffer)
+    # Read the intermediate PDF file back to BytesIO
+    with open('temp.pdf', 'rb') as f:
+        output_buffer = BytesIO(f.read())
+
     return output_buffer
 
 # Streamlit app title
