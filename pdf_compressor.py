@@ -12,17 +12,8 @@ def compress_pdf(input_file, compression_factor):
     for page_num in range(reader.numPages):
         page = reader.getPage(page_num)
 
-        # Reduce image quality to achieve higher compression
-        page.compressContentStreams()
-        xObject = page['/Resources']['/XObject'].get_object()
-        for obj in xObject:
-            if xObject[obj]['/Subtype'] == '/Image':
-                xObject[obj].update({
-                    PyPDF2.generic.NameObject('/Filter'): PyPDF2.generic.NameObject('/DCTDecode'),
-                    PyPDF2.generic.NameObject('/BitsPerComponent'): PyPDF2.generic.createStringObject('8'),
-                    PyPDF2.generic.NameObject('/ColorSpace'): PyPDF2.generic.NameObject('/DeviceRGB')
-                })
-
+        # Reduce image resolution by a factor to achieve higher compression
+        page.scaleBy(compression_factor)
         writer.addPage(page)
 
     writer.write(output_buffer)
