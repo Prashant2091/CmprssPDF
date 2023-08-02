@@ -1,36 +1,24 @@
-import streamlit as st
-import PyPDF2
-from io import BytesIO
+# .streamlit/main.yml
+name: My Streamlit App
+description: This is a description of my Streamlit app.
 
-# Function to compress the PDF
-def compress_pdf(input_file, compression_factor):
-    reader = PyPDF2.PdfFileReader(input_file)
-    writer = PyPDF2.PdfFileWriter()
+# Specify the Streamlit app file and any additional files/directories required by your app
+# Replace 'app.py' with the filename of your Streamlit app
+app:
+  command:
+    - streamlit run
+    - pdf_compressor.py
 
-    for page_num in range(reader.numPages):
-        page = reader.getPage(page_num)
-        page.compressContentStreams(compression_factor)
-        writer.addPage(page)
+# Specify the Streamlit version you are using (optional)
+# If not specified, it will use the default Streamlit version on Streamlit Sharing
+#streamlit_version: "1.0.0"
 
-    output_buffer = BytesIO()
-    writer.write(output_buffer)
-    return output_buffer
+# Specify the dependencies required for your app
+# You can specify the libraries needed by your app here
+# For example, if you need pandas, uncomment the following line:
+# dependencies:
+#   - pandas
 
-# Streamlit app title
-st.title('PDF Compressor')
-
-# File uploader widget
-uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
-
-if uploaded_file is not None:
-    # Display original file size
-    st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
-
-    # Compress the PDF
-    compression_factor = st.slider("Select Compression Factor", min_value=0, max_value=9, value=4)
-    compressed_pdf = compress_pdf(uploaded_file, compression_factor)
-
-    # Display compressed file size and provide download link
-    compressed_size = len(compressed_pdf.getvalue())
-    st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
-    st.download_as_file(compressed_pdf, "compressed.pdf", "Download Compressed PDF")
+# Specify any environment variables required for your app (optional)
+#env:
+#  MY_ENV_VAR: "my_value"
