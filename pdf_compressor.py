@@ -1,21 +1,27 @@
 import streamlit as st
-import PyPDF2
+from PyPDF2 import PdfReader, PdfWriter
 import base64
 from io import BytesIO
 
 # Function to compress the PDF
 def compress_pdf(uploaded_file, compression_factor):
-    input_pdf = PyPDF2.PdfFileReader(uploaded_file)
+    pdf_reader = PdfReader(uploaded_file)
+    output_buffer = BytesIO()
 
-    # Create a new PDF with compression settings
-    output_pdf = PyPDF2.PdfFileWriter()
-    for page_number in range(input_pdf.getNumPages()):
-        page = input_pdf.getPage(page_number)
-        page.compressContentStreams()
-        page.scaleBy(compression_factor)
-        output_pdf.addPage(page)
+    pdf_writer = PdfWriter()
+    for page in pdf_reader.pages:
+        pdf_writer.add_page(page)
+        if "/XObject" in page:
+            for obj in page["/XObject"]:
+                if page["/XObject"][obj]["/Subtype"] == "/Image":
+                    img = page["/XObject"][obj]
+                    img._data = img._data.encode('zip')
+                    img._data = img._data.decode()
+                    page["/XObject"][obj] = img
 
-    return output_pdf
+    pdf_writer.write(output_buffer)
+
+    return output_buffer
 
 # Streamlit app title
 st.title('PDF Compressor')
@@ -24,24 +30,22 @@ st.title('PDF Compressor')
 uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
 # Compression factor slider
-compression_factor = st.slider("Compression Factor", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
+compression_factor = st.slider("Compression Factor", min_value=10, max_value=100, step=10, value=50)
 
 if uploaded_file is not None:
-    # Display the uploaded file
-    st.write(f"Original File Size: {round(uploaded_file.size/1024, 2)} KB")
+    # Display the original file size
+    original_size_kb = round(uploaded_file.size / 1024, 2)
+    st.write(f"Original File Size: {original_size_kb} KB")
 
     # Compress the PDF
-    compressed_pdf = compress_pdf(uploaded_file, compression_factor)
-
-    # Save the compressed PDF to a buffer
-    output_buffer = BytesIO()
-    compressed_pdf.write(output_buffer)
+    compressed_buffer = compress_pdf(uploaded_file, compression_factor)
 
     # Convert buffer to base64
-    encoded_pdf = base64.b64encode(output_buffer.getvalue()).decode()
+    encoded_pdf = base64.b64encode(compressed_buffer.getvalue()).decode()
 
     # Download link to download the compressed PDF
     st.markdown(f'<a href="data:application/pdf;base64,{encoded_pdf}" download="compressed_pdf.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
 
     # Display the compressed file size
-    st.write(f"Compressed File Size: {round(len(output_buffer.getvalue())/1024, 2)} KB")
+    compressed_size_kb = round(len(compressed_buffer.getvalue()) / 1024, 2)
+    st.write(f"Compressed File Size: {compressed_size_kb} KB")
