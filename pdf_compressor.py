@@ -1,7 +1,7 @@
 import io
 import PyPDF2
 import streamlit as st
-
+import base64
 def compress_pdf(uploaded_file):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
