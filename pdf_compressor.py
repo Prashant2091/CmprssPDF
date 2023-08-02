@@ -7,17 +7,11 @@ def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
-    for page in pdf_reader.pages:
-        # Create a new page with the same media box as the original
-        compressed_page = pdf_writer.add_blank_page(
-            width=page.mediaBox.getWidth(),
-            height=page.mediaBox.getHeight()
-        )
-
-        # Copy the content from the original page to the new compressed page
+    for page_number in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_number]
+        compressed_page = pdf_writer.add_page(page.width, page.height)
         compressed_page.merge_page(page)
 
-    # Create a BytesIO object to hold the compressed PDF data
     compressed_pdf = io.BytesIO()
     pdf_writer.write(compressed_pdf)
     return compressed_pdf
