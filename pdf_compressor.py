@@ -24,7 +24,7 @@ st.title('PDF Compressor')
 uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
 # Compression factor slider
-compression_factor = st.slider("Compression Factor", min_value=1, max_value=10, step=1, value=5)
+compression_factor = st.slider("Compression Factor", min_value=0.01, max_value=0.1, step=0.01, value=0.05)
 
 if uploaded_file is not None:
     # Display the uploaded file
