@@ -1,2 +1,2 @@
-argparse==1.4.0
-streamlit==1.13.0
+streamlit==0.84.1
+PyPDF2==1.26.0
