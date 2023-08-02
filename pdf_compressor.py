@@ -1,32 +1,15 @@
 import streamlit as st
 import PyPDF2
 from io import BytesIO
-import base64
 
-# Function to compress the PDF
-def compress_pdf(input_file, compression_factor=1):
+def compress_pdf(input_file, compression_factor):
     reader = PyPDF2.PdfFileReader(input_file)
     writer = PyPDF2.PdfFileWriter()
 
     for page_num in range(reader.numPages):
         page = reader.getPage(page_num)
-        page.compressContentStreams()  # Compress using default compression algorithm
+        page.compressContentStreams(compression_factor)
         writer.addPage(page)
-
-    # Increase compression by reducing image quality
-    for page_num in range(writer.getNumPages()):
-        page = writer.getPage(page_num)
-        resources = page['/Resources']
-        if '/XObject' in resources:
-            x_objects = resources['/XObject']
-            for obj in x_objects:
-                obj = x_objects[obj]
-                if obj['/Subtype'] == '/Image':
-                    obj = obj.getObject()  # Resolve the IndirectObject
-                    obj.update({
-                        PyPDF2.generic.createStringObject('/Filter'): PyPDF2.generic.createStringObject('/DCTDecode'),
-                        PyPDF2.generic.createStringObject('/Q'): PyPDF2.generic.createStringObject(str(compression_factor))
-                    })
 
     output_buffer = BytesIO()
     writer.write(output_buffer)
@@ -42,13 +25,13 @@ if uploaded_file is not None:
     # Display original file size
     st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
-    # Compress the PDF with higher compression factor (e.g., 0 for maximum compression, 1 for default)
-    compression_factor = 0.7  # Adjust this value for higher compression
+    # Set the desired compression factor (between 0 and 1)
+    compression_factor = 0.3  # Adjust this value to achieve higher compression
+
+    # Compress the PDF
     compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
-    # Display compressed file size
+    # Display compressed file size and provide download link
     compressed_size = len(compressed_pdf.getvalue())
     st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
-
-    # Provide a download link for the compressed PDF
-    st.markdown(f'<a href="data:application/pdf;base64,{base64.b64encode(compressed_pdf.getvalue()).decode()}" download="compressed.pdf">Download Compressed PDF</a>', unsafe_allow_html=True)
+    st.download_button(label="Download Compressed PDF", data=compressed_pdf.getvalue(), file_name="compressed.pdf")
