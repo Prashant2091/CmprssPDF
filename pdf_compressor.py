@@ -3,27 +3,36 @@ import PyPDF2
 import io
 import base64
 
-def compress_page(page, compression_factor=0.5):
-    content_stream = page['/Contents']
+def compress_content_stream(content_stream, compression_factor=0.5):
     if isinstance(content_stream, PyPDF2.pdf.EncodedStreamObject):
         content_stream = content_stream.decodedContent()
 
-    filters = page.get('/Filter', [])
-    if '/FlateDecode' not in filters:
-        filters.append('/FlateDecode')
+    content_stream = content_stream.strip()  # Strip leading and trailing spaces
+    length = len(content_stream)
 
-    page['/Filter'] = filters
-    page.__setitem__('/Contents', content_stream)
+    if length == 0:
+        return content_stream
 
-    return page
+    compress_stream = io.BytesIO()
+    with PyPDF2.filters.FlateEncode(compress_stream, compression_factor=9) as encoder:
+        encoder.write(content_stream)
+
+    compressed_content_stream = compress_stream.getvalue()
+
+    if len(compressed_content_stream) >= length:
+        return content_stream
+
+    return compressed_content_stream
 
 def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
-        compressed_page = compress_page(page, compression_factor)
-        pdf_writer.add_page(compressed_page)
+        compressed_content = compress_content_stream(page['/Contents'], compression_factor)
+        page.compressContentStreams()  # This compresses all other streams in the page
+        page.__setitem__('/Contents', compressed_content)
+        pdf_writer.add_page(page)
 
     pdf_bytes = io.BytesIO()
     pdf_writer.write(pdf_bytes)
