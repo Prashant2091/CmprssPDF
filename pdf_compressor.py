@@ -1,21 +1,21 @@
 import streamlit as st
 import PyPDF2
-import tempfile
-import os
+import io
 
-def compress_pdf(input_file, output_file, compression_factor):
-    with open(input_file, "rb") as file:
-        reader = PyPDF2.PdfFileReader(file)
-        writer = PyPDF2.PdfFileWriter()
+def compress_pdf(input_file, compression_factor):
+    reader = PyPDF2.PdfFileReader(input_file)
+    writer = PyPDF2.PdfFileWriter()
 
-        for page_number in range(reader.numPages):
-            page = reader.getPage(page_number)
-            # Reduce the resolution to reduce file size
-            page.compressContentStreams(compression_factor)
-            writer.addPage(page)
+    for page_number in range(reader.numPages):
+        page = reader.getPage(page_number)
+        # Reduce the resolution to reduce file size
+        page.compressContentStreams(compression_factor)
+        writer.addPage(page)
 
-        with open(output_file, "wb") as output:
-            writer.write(output)
+    output_buffer = io.BytesIO()
+    writer.write(output_buffer)
+    output_buffer.seek(0)
+    return output_buffer
 
 st.title("PDF Compressor")
 
@@ -30,27 +30,14 @@ if uploaded_file is not None:
     # Slider for compression factor
     compression_factor = st.slider("Select Compression Factor", min_value=0.1, max_value=1.0, step=0.1, value=0.5)
 
-    # Create a temporary directory to save the uploaded PDF
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        temp_file.write(uploaded_file.read())
-
     # Compress the PDF file
-    compressed_file = f"compressed_{uploaded_file.name}"
-    compress_pdf(temp_file.name, compressed_file, compression_factor)
+    compressed_file = compress_pdf(uploaded_file, compression_factor)
 
     # Display the compressed file size
-    compressed_size = round(os.path.getsize(compressed_file) / 1024, 2)  # Convert to KB
+    compressed_size = round(len(compressed_file.getvalue()) / 1024, 2)  # Convert to KB
     st.write(f"Download Compressed PDF (Compression Factor: {compression_factor:.1f})")
     st.download_button(
         label=f"Compressed File Size: {compressed_size} KB",
-        data=open(compressed_file, "rb").read(),
-        file_name=compressed_file,
+        data=compressed_file.getvalue(),
+        file_name="compressed.pdf",
     )
-
-    # Delete the temporary file
-    os.remove(temp_file.name)
-
-
-
-
-
