@@ -4,7 +4,7 @@ import io
 
 def compress_pdf(uploaded_file, compression_factor):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
-    pdf_writer = PyPDF2.PdfFileWriter()  # Use PdfFileWriter instead of PdfWriter
+    pdf_writer = PyPDF2.PdfFileWriter()
 
     for page_num in range(pdf_reader.numPages):
         page = pdf_reader.getPage(page_num)
@@ -30,11 +30,10 @@ def main():
             compressed_pdf.write(output_buffer)
             output_buffer.seek(0)
 
-            st.download_button(
-                label="Download Compressed PDF",
-                data=output_buffer,
-                file_name="compressed_pdf.pdf",
-                mime="application/pdf",
+            # Provide a custom button label and link to trigger download
+            st.markdown(
+                f'<a href="data:application/pdf;base64,{output_buffer.read().encode("base64").decode()}">Download Compressed PDF</a>',
+                unsafe_allow_html=True,
             )
 
 if __name__ == "__main__":
