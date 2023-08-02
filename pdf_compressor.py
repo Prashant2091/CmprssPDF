@@ -1,14 +1,15 @@
 import streamlit as st
-from PyPDF2 import PdfReader, PdfWriter
+import PyPDF4
 
 # Function to compress the PDF
 def compress_pdf(uploaded_file, compression_factor):
-    pdf_reader = PdfReader(uploaded_file)
-    pdf_writer = PdfWriter()
+    pdf_reader = PyPDF4.PdfFileReader(uploaded_file)
+    pdf_writer = PyPDF4.PdfFileWriter()
 
-    for page in pdf_reader.pages:
+    for page_num in range(pdf_reader.getNumPages()):
+        page = pdf_reader.getPage(page_num)
         page.compressContentStreams(compression_factor)
-        pdf_writer.add_page(page)
+        pdf_writer.addPage(page)
 
     output_buffer = st._upload_file_manager._get_encoded_file_contents(pdf_writer)
     return output_buffer
