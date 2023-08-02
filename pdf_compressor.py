@@ -43,7 +43,7 @@ if uploaded_file is not None:
     st.write(f"Original File Size: {uploaded_file.size / 1024:.2f} KB")
 
     # Compress the PDF with higher compression factor (e.g., 0 for maximum compression, 1 for default)
-    compression_factor = 0.2  # Adjust this value for higher compression
+    compression_factor = 0.7  # Adjust this value for higher compression
     compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
     # Display compressed file size
