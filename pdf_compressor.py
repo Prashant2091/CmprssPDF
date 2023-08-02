@@ -1,8 +1,9 @@
 import streamlit as st
 import PyPDF2
+from io import BytesIO
 
 # Function to compress the PDF
-def compress_pdf(input_file, output_file, compression_factor):
+def compress_pdf(input_file, compression_factor):
     reader = PyPDF2.PdfFileReader(input_file)
     writer = PyPDF2.PdfFileWriter()
 
@@ -11,8 +12,9 @@ def compress_pdf(input_file, output_file, compression_factor):
         page.compressContentStreams(compression_factor)
         writer.addPage(page)
 
-    with open(output_file, "wb") as f:
-        writer.write(f)
+    output_buffer = BytesIO()
+    writer.write(output_buffer)
+    return output_buffer
 
 # Streamlit app title
 st.title('PDF Compressor')
@@ -28,9 +30,9 @@ if uploaded_file is not None:
     compression_factor = 0.5
 
     # Compress the PDF
-    compressed_file = f"{uploaded_file.name.split('.')[0]}_compressed.pdf"
-    compress_pdf(uploaded_file, compressed_file, compression_factor)
+    compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
     # Display compressed file size and provide download link
-    st.write(f"Compressed File Size: {st.file_uploader(compressed_file).size / 1024:.2f} KB")
-    st.download_button(label="Download Compressed PDF", data=open(compressed_file, 'rb').read(), file_name=compressed_file)
+    compressed_size = len(compressed_pdf.getvalue())
+    st.write(f"Compressed File Size: {compressed_size / 1024:.2f} KB")
+    st.download_button(label="Download Compressed PDF", data=compressed_pdf.getvalue(), file_name="compressed.pdf")
