@@ -9,8 +9,8 @@ def compress_pdf(input_file, compression_factor):
     writer.cloneDocumentFromReader(pdf_reader)
 
     # Set compression factor for all pages
-    for page in writer.pages:
-        page.compressContentStreams()  # This is optional. You can remove it if not needed.
+    for page_num in range(pdf_reader.getNumPages()):
+        page = writer.getPage(page_num)
         page.compressContentStreams(compression_factor)
 
     output_buffer = BytesIO()
