@@ -4,15 +4,16 @@ from io import BytesIO
 
 # Function to compress the PDF
 def compress_pdf(input_file):
-    pdf_reader = PyPDF2.PdfReader(input_file)
-    pdf_writer = PyPDF2.PdfWriter()
+    pdf_reader = PyPDF2.PdfFileReader(input_file)
+    pdf_writer = PyPDF2.PdfFileWriter()
 
-    for page in pdf_reader.pages:
-        pdf_writer.add_page(page)
+    for page_number in range(pdf_reader.getNumPages()):
+        page = pdf_reader.getPage(page_number)
+        pdf_writer.addPage(page)
 
-    output_buffer = BytesIO()
-    pdf_writer.write(output_buffer)
-    return output_buffer
+    compressed_pdf = BytesIO()
+    pdf_writer.write(compressed_pdf)
+    return compressed_pdf
 
 # Streamlit app title
 st.title('PDF Compressor')
