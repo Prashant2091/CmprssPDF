@@ -1,117 +1,53 @@
-#!/usr/bin/env python3
-# MIT license -- free to use as you want, cheers.
-
-"""
-Simple python wrapper script to use ghoscript function to compress PDF files.
-
-Compression levels:
-    0: default
-    1: prepress
-    2: printer
-    3: ebook
-    4: screen
-
-Dependency: Ghostscript.
-On MacOSX install via command line `brew install ghostscript`.
-"""
-
-import argparse
-import os.path
-import shutil
-import subprocess
-import sys
 import streamlit as st
-def compress(input_file_path, output_file_path, power=0):
-    """Function to compress PDF via Ghostscript command line interface"""
-    quality = {0: "/default", 1: "/prepress", 2: "/printer", 3: "/ebook", 4: "/screen"}
+import PyPDF2
+import io
 
-    # Basic controls
-    # Check if valid path
-    if not os.path.isfile(input_file_path):
-        print("Error: invalid path for input PDF file.", input_file_path)
-        sys.exit(1)
+def compress_pdf(input_pdf, compression_factor):
+    # Create a PDF writer object
+    pdf_writer = PyPDF2.PdfWriter()
 
-    # Check if file is a PDF by extension
-    if input_file_path.split('.')[-1].lower() != 'pdf':
-        print(f"Error: input file is not a PDF.", input_file_path)
-        sys.exit(1)
+    # Open the input PDF file
+    with open(input_pdf, "rb") as pdf_file:
+        # Create a PDF reader object
+        pdf_reader = PyPDF2.PdfFileReader(pdf_file)
 
-    gs = get_ghostscript_path()
-    print("Compress PDF...")
-    initial_size = os.path.getsize(input_file_path)
-    subprocess.call(
-        [
-            gs,
-            "-sDEVICE=pdfwrite",
-            "-dCompatibilityLevel=1.4",
-            "-dPDFSETTINGS={}".format(quality[power]),
-            "-dNOPAUSE",
-            "-dQUIET",
-            "-dBATCH",
-            "-sOutputFile={}".format(output_file_path),
-            input_file_path,
-        ]
-    )
-    final_size = os.path.getsize(output_file_path)
-    ratio = 1 - (final_size / initial_size)
-    print("Compression by {0:.0%}.".format(ratio))
-    print("Final file size is {0:.5f}MB".format(final_size / 1000000))
-    print("Done.")
+        # Get the total number of pages in the PDF
+        total_pages = pdf_reader.getNumPages()
 
+        # Process each page
+        for page_num in range(total_pages):
+            # Get the current page
+            page = pdf_reader.getPage(page_num)
 
-def get_ghostscript_path():
-    gs_names = ["gs", "gswin32", "gswin64"]
-    for name in gs_names:
-        if shutil.which(name):
-            return shutil.which(name)
-    raise FileNotFoundError(
-        f"No GhostScript executable was found on path ({'/'.join(gs_names)})"
-    )
+            # Apply compression to the page
+            page.compressContentStreams(compression_factor)
 
+            # Add the compressed page to the PDF writer
+            pdf_writer.addPage(page)
+
+        # Write the compressed PDF to a BytesIO buffer
+        output_buffer = io.BytesIO()
+        pdf_writer.write(output_buffer)
+
+    return output_buffer
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument("input", help="Relative or absolute path of the input PDF file")
-    parser.add_argument(
-        "-o", "--out", help="Relative or absolute path of the output PDF file"
-    )
-    parser.add_argument(
-        "-c", "--compress", type=int, help="Compression level from 0 to 4"
-    )
-    parser.add_argument(
-        "-b", "--backup", action="store_true", help="Backup the old PDF file"
-    )
-    parser.add_argument(
-        "--open", action="store_true", default=False, help="Open PDF after compression"
-    )
-    args = parser.parse_args()
+    st.title("PDF Compressor")
 
-    # In case no compression level is specified, default is 2 '/ printer'
-    if not args.compress:
-        args.compress = 2
-    # In case no output file is specified, store in temp file
-    if not args.out:
-        args.out = "temp.pdf"
+    # File uploader widget
+    uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
-    # Run
-    compress(args.input, args.out, power=args.compress)
+    if uploaded_file is not None:
+        # Get the compression factor from the user
+        compression_factor = st.slider("Select Compression Factor", min_value=0, max_value=100, value=50)
 
-    # In case no output file is specified, erase original file
-    if args.out == "temp.pdf":
-        if args.backup:
-            shutil.copyfile(args.input, args.input.replace(".pdf", "_BACKUP.pdf"))
-        shutil.copyfile(args.out, args.input)
-        os.remove(args.out)
+        # Check if the user clicked the "Compress" button
+        if st.button("Compress"):
+            # Compress the PDF
+            compressed_pdf = compress_pdf(uploaded_file, compression_factor)
 
-    # In case we want to open the file after compression
-    if args.open:
-        if args.out == "temp.pdf" and args.backup:
-            subprocess.call(["open", args.input])
-        else:
-            subprocess.call(["open", args.out])
-
+            # Download the compressed PDF
+            st.download_button("Download Compressed PDF", data=compressed_pdf.getvalue(), file_name="compressed.pdf")
 
 if __name__ == "__main__":
     main()
