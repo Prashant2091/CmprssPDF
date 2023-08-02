@@ -17,7 +17,7 @@ app:
 # You can specify the libraries needed by your app here
 # For example, if you need pandas, uncomment the following line:
 # dependencies:
-#   - pandas
+   - PyMuPDF
 
 # Specify any environment variables required for your app (optional)
 #env:
