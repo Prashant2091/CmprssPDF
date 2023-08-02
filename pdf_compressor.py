@@ -21,9 +21,14 @@ def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
-        compressed_content = compress_content_stream(page['/Contents'].get_object(), compression_factor)
+        content_streams = page.getContents()
+        if not isinstance(content_streams, list):
+            content_streams = [content_streams]
+
+        compressed_streams = [compress_content_stream(stream, compression_factor) for stream in content_streams]
+        page.setContents(compressed_streams)
+
         page.compressContentStreams()
-        page.__setitem__('/Contents', PyPDF2.generic.ByteStringObject(compressed_content))
         pdf_writer.add_page(page)
 
     pdf_bytes = io.BytesIO()
@@ -54,8 +59,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
