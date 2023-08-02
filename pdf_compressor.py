@@ -4,19 +4,17 @@ import io
 import base64
 
 def compress_page(page, compression_factor=0.5):
-    content = page.extract_text()  # Extract text content before compression
     xObject = page['/Resources']['/XObject'].get_object()  # Get the XObject dictionary
     for obj in xObject:
-        xObject[obj].get_object().compressContent(compression_factor)  # Compress XObject
-
-    return content, page
+        xObject[obj].get_object().compress(compression_factor)  # Compress XObject
+    return page
 
 def compress_pdf(uploaded_file, compression_factor=0.5):
     pdf_reader = PyPDF2.PdfFileReader(uploaded_file)
     pdf_writer = PyPDF2.PdfFileWriter()
 
     for page in pdf_reader.pages:
-        content, compressed_page = compress_page(page, compression_factor)
+        compressed_page = compress_page(page, compression_factor)
         pdf_writer.add_page(compressed_page)
 
     pdf_bytes = io.BytesIO()
