@@ -1,41 +1,32 @@
-Pdfc --  PDF Compressor
 =======================
+Pdfc -- PDF Compressor
+======================
 
-Simple python script to compress PDF.
+Simple Python tooling to compress PDF files. This repository now includes a
+Streamlit app for browser-based compression and optional metadata removal.
 
-Installation
--------------
-* Install dependency Ghostscript.
-On MacOSX: `brew install ghostscript`
-On Windows: install binaries via [official website] (https://www.ghostscript.com/)
-* Create a symbolic link if you want to run it everywhere in bash
-`ln -s pdf_compressor.py pdfc`
-* Add in PATH environment variable
-On MacOSX:
-`echo 'export PATH="/absolute/path/of/the/folder/script/:$PATH"' >> ~/.bash_profile`
+Streamlit App
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Start the app:
+   ```bash
+   streamlit run pdf_compressor.py
+   ```
+3. Upload one or more PDFs, optionally provide a password for protected files,
+   and download the compressed results.
 
-Usage
+Deployment (Streamlit Community Cloud)
+--------------------------------------
+1. Push this repository to GitHub.
+2. In Streamlit Community Cloud, select **New app** and point to this repo.
+3. Set the app entry point to `pdf_compressor.py` and deploy.
+4. Ensure `requirements.txt` is present so dependencies are installed.
+
+Notes
 -----
-`pdfc [-o output_file_path] [-c number] input_file_path`
-
-Ex:
-`pdfc -o out.pdf in.pdf`
-
-Output:
-```
-Compress PDF...
-Compression by 65%.
-Final file size is 1.4MB
-Done.
-```
-
-Options
--------
-* `-c` or `--compress` specifies 5 levels of compression, similar to standard pdf generator level:
-  * 0: default - *almost identical to /screen*
-  * 1: prepress - *high quality, color preserving, 300 dpi imgs*
-  * 2: printer - *high quality, 300 dpi images*
-  * 3: ebook - *low quality, 150 dpi images*
-  * 4: screen - *screen-view-only quality, 72 dpi images*
-* `-o`or `--out` specifies the output file path. If not specified, input file will be erased.
-* `-b`or `--backup` creates a backup of the original file in case no output is specified to avoid erasing the original file.
+* Compression uses lossless stream compression via `PyPDF2`, which is safe for
+  document content but may not shrink image-heavy PDFs as much as lossy tools.
+* If you need more aggressive compression, consider preprocessing images before
+  upload or using a dedicated PDF optimizer outside this app.
