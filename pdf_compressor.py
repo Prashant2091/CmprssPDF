@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import inspect
-import logging
-import math
 import re
-import zlib
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -23,7 +20,8 @@ from PyPDF2.errors import PdfReadError
 class CompressionResult:
     filename: str
     original_size: int
-    compressed_size: int
+    attempted_size: int          # size of best compression attempt (may be >= original)
+    output_size: int             # size of delivered bytes (may be original if kept)
     data: bytes
     used_original: bool = False
     backend: str = "auto"
@@ -65,7 +63,8 @@ def dedupe_names(results: Iterable[CompressionResult]) -> list[CompressionResult
             CompressionResult(
                 filename=new_name,
                 original_size=r.original_size,
-                compressed_size=r.compressed_size,
+                attempted_size=r.attempted_size,
+                output_size=r.output_size,
                 data=r.data,
                 used_original=r.used_original,
                 backend=r.backend,
@@ -91,7 +90,6 @@ def _supports_kw(fn, kw: str) -> bool:
         return False
     if kw in sig.parameters:
         return True
-    # Accept if **kwargs present
     return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
 
 
@@ -112,6 +110,7 @@ def _compress_with_pypdf2_lossless(input_bytes: bytes, *, password: str | None, 
 
     writer = PdfWriter()
 
+    # Preserve doc-level structure when possible
     if hasattr(writer, "clone_document_from_reader"):
         writer.clone_document_from_reader(reader)
         for page in writer.pages:
@@ -147,6 +146,7 @@ def _compress_with_pypdf2_lossless(input_bytes: bytes, *, password: str | None, 
 # =========================
 def _safe_pikepdf_save(pdf, out: BytesIO, kwargs: dict) -> None:
     """pikepdf versions vary; drop unknown kwargs until save() works."""
+    kwargs = dict(kwargs)  # don't mutate callers
     while True:
         try:
             pdf.save(out, **kwargs)
@@ -161,15 +161,36 @@ def _safe_pikepdf_save(pdf, out: BytesIO, kwargs: dict) -> None:
                 raise
 
 
+def _pikepdf_open_or_raise(input_bytes: bytes, password: str | None):
+    """
+    IMPORTANT FIX:
+    pikepdf.open requires password as str. Never pass None.
+    """
+    import pikepdf
+
+    try:
+        return pikepdf.open(BytesIO(input_bytes), password=password or "")
+    except Exception as exc:
+        PasswordError = getattr(pikepdf, "PasswordError", None)
+        PdfError = getattr(pikepdf, "PdfError", None)
+
+        if PasswordError and isinstance(exc, PasswordError):
+            if not password:
+                raise ValueError("This PDF is password-protected. Provide a password to continue.")
+            raise ValueError("Unable to decrypt the PDF with the provided password.")
+
+        if PdfError and isinstance(exc, PdfError):
+            raise ValueError("The file could not be read as a PDF.")
+        raise
+
+
 def _pikepdf_remove_metadata(pdf) -> None:
     try:
-        # remove XMP
         if "/Metadata" in pdf.Root:
             del pdf.Root["/Metadata"]
     except Exception:
         pass
     try:
-        # remove DocInfo
         pdf.docinfo.clear()
     except Exception:
         pass
@@ -178,7 +199,7 @@ def _pikepdf_remove_metadata(pdf) -> None:
 def _pikepdf_copy_metadata(src_pdf, dst_pdf) -> None:
     """Best-effort metadata preservation for both XMP + DocInfo."""
     try:
-        # Copy DocInfo keys
+        # DocInfo
         try:
             dst_pdf.docinfo.clear()
             for k, v in src_pdf.docinfo.items():
@@ -186,11 +207,10 @@ def _pikepdf_copy_metadata(src_pdf, dst_pdf) -> None:
         except Exception:
             pass
 
-        # Copy XMP via open_metadata mapping
+        # XMP
         try:
             src_meta = src_pdf.open_metadata()
             with dst_pdf.open_metadata() as dst_meta:
-                # Clear existing keys first
                 for k in list(dst_meta.keys()):
                     try:
                         del dst_meta[k]
@@ -207,6 +227,65 @@ def _pikepdf_copy_metadata(src_pdf, dst_pdf) -> None:
         pass
 
 
+def _pikepdf_save_bytes(pdf, base_kwargs: dict) -> bytes:
+    out = BytesIO()
+    _safe_pikepdf_save(pdf, out, base_kwargs)
+    out.seek(0)
+    return out.getvalue()
+
+
+def _pikepdf_save_best(pdf, base_kwargs: dict, *, original_size: int | None = None, try_harder: bool = True) -> bytes:
+    """
+    Saves PDF with base_kwargs. If that result grows vs original_size, tries a few safe variants
+    and returns the smallest bytes found.
+    """
+    best = _pikepdf_save_bytes(pdf, base_kwargs)
+    best_len = len(best)
+
+    if not try_harder:
+        return best
+
+    # Only do extra saves if we likely need them
+    if original_size is not None and best_len <= original_size:
+        return best
+
+    variants: list[dict] = []
+
+    # Variant 1: remove object_stream_mode (sometimes smaller on already-optimized PDFs)
+    if "object_stream_mode" in base_kwargs:
+        v = dict(base_kwargs)
+        v.pop("object_stream_mode", None)
+        variants.append(v)
+
+    # Variant 2: avoid content normalization
+    v = dict(base_kwargs)
+    v["normalize_content"] = False
+    variants.append(v)
+
+    # Variant 3: avoid recompressing flate (sometimes increases for already-optimal streams)
+    v = dict(base_kwargs)
+    v["recompress_flate"] = False
+    variants.append(v)
+
+    # Variant 4: slightly lower compression level (rarely but sometimes smaller due to overhead)
+    if "compression_level" in base_kwargs:
+        v = dict(base_kwargs)
+        lvl = int(v.get("compression_level", 9))
+        v["compression_level"] = 6 if lvl > 6 else max(1, lvl - 1)
+        variants.append(v)
+
+    for v in variants:
+        try:
+            b = _pikepdf_save_bytes(pdf, v)
+            if len(b) < best_len:
+                best = b
+                best_len = len(b)
+        except Exception:
+            continue
+
+    return best
+
+
 def _compress_with_pikepdf_lossless(
     input_bytes: bytes,
     *,
@@ -215,25 +294,16 @@ def _compress_with_pikepdf_lossless(
     compression_level: int,
     object_streams: bool,
     linearize: bool,
+    try_harder: bool,
 ) -> bytes:
     import pikepdf
 
-    try:
-        pdf = pikepdf.open(BytesIO(input_bytes), password=password)
-    except Exception as exc:
-        PasswordError = getattr(pikepdf, "PasswordError", None)
-        PdfError = getattr(pikepdf, "PdfError", None)
-        if PasswordError and isinstance(exc, PasswordError):
-            raise ValueError("Unable to decrypt the PDF with the provided password.")
-        if PdfError and isinstance(exc, PdfError):
-            raise ValueError("The file could not be read as a PDF.")
-        raise
+    pdf = _pikepdf_open_or_raise(input_bytes, password)
 
     with pdf:
         if remove_metadata:
             _pikepdf_remove_metadata(pdf)
 
-        out = BytesIO()
         kwargs = {
             "compress_streams": True,
             "linearize": bool(linearize),
@@ -241,12 +311,11 @@ def _compress_with_pikepdf_lossless(
             "recompress_flate": True,
             "compression_level": int(max(1, min(9, compression_level))),
         }
+
         if object_streams and hasattr(pikepdf, "ObjectStreamMode"):
             kwargs["object_stream_mode"] = pikepdf.ObjectStreamMode.generate
 
-        _safe_pikepdf_save(pdf, out, kwargs)
-        out.seek(0)
-        return out.getvalue()
+        return _pikepdf_save_best(pdf, kwargs, original_size=len(input_bytes), try_harder=try_harder)
 
 
 def compress_pdf_lossless(
@@ -258,6 +327,7 @@ def compress_pdf_lossless(
     compression_level: int = 9,
     object_streams: bool = True,
     linearize: bool = False,
+    try_harder: bool = True,
 ) -> tuple[bytes, str]:
     backend = backend.lower().strip()
 
@@ -270,6 +340,7 @@ def compress_pdf_lossless(
                 compression_level=compression_level,
                 object_streams=object_streams,
                 linearize=linearize,
+                try_harder=try_harder,
             )
             return out, "pikepdf(qpdf) lossless"
         except ImportError:
@@ -304,7 +375,6 @@ def _iter_image_xobjects(obj, *, visited: set[tuple[int, int]]):
     for name in list(xobjs.keys()):
         try:
             xo = xobjs[name]
-            # Identify object uniquely (to avoid reprocessing shared images)
             og = getattr(xo, "objgen", None)
             if og and og in visited:
                 continue
@@ -315,14 +385,12 @@ def _iter_image_xobjects(obj, *, visited: set[tuple[int, int]]):
             if subtype == "/Image":
                 yield (name, xo)
             elif subtype == "/Form":
-                # Recurse
                 yield from _iter_image_xobjects(xo, visited=visited)
         except Exception:
             continue
 
 
 def _page_inches(page) -> tuple[float, float] | None:
-    # MediaBox is points (72 per inch)
     try:
         mb = page.MediaBox
         w_pt = float(mb[2] - mb[0])
@@ -332,6 +400,22 @@ def _page_inches(page) -> tuple[float, float] | None:
         return (w_pt / 72.0, h_pt / 72.0)
     except Exception:
         return None
+
+
+def _stream_raw_size(stream) -> int | None:
+    """
+    Raw encoded stream size (best for deciding if replacement would increase file size).
+    """
+    try:
+        b = stream.read_raw_bytes()
+        return len(b) if b is not None else None
+    except Exception:
+        # Fallback (can be large!)
+        try:
+            b = stream.read_bytes()
+            return len(b) if b is not None else None
+        except Exception:
+            return None
 
 
 # =========================
@@ -349,6 +433,7 @@ def compress_pdf_scan_turbo(
     compression_level: int,
     object_streams: bool,
     linearize: bool,
+    try_harder: bool,
 ) -> tuple[bytes, str, str]:
     try:
         import pikepdf
@@ -357,19 +442,9 @@ def compress_pdf_scan_turbo(
     except ImportError as exc:
         raise ValueError("Scan/Turbo mode requires pikepdf + pillow. Install: pip install pikepdf pillow") from exc
 
-    # Avoid PIL DecompressionBomb warnings for large scans (still can OOM if gigantic)
     Image.MAX_IMAGE_PIXELS = None
 
-    try:
-        pdf = pikepdf.open(BytesIO(input_bytes), password=password)
-    except Exception as exc:
-        PasswordError = getattr(pikepdf, "PasswordError", None)
-        PdfError = getattr(pikepdf, "PdfError", None)
-        if PasswordError and isinstance(exc, PasswordError):
-            raise ValueError("Unable to decrypt the PDF with the provided password.")
-        if PdfError and isinstance(exc, PdfError):
-            raise ValueError("The file could not be read as a PDF.")
-        raise
+    pdf = _pikepdf_open_or_raise(input_bytes, password)
 
     images_total = 0
     images_optimized = 0
@@ -393,7 +468,7 @@ def compress_pdf_scan_turbo(
             for _, rawimg in _iter_image_xobjects(page, visited=visited):
                 images_total += 1
 
-                # Skip masks/transparency (these are easy to break)
+                # Skip masks/transparency
                 try:
                     if rawimg.get("/ImageMask", False):
                         images_skipped += 1
@@ -414,6 +489,8 @@ def compress_pdf_scan_turbo(
                 except Exception:
                     images_skipped += 1
                     continue
+
+                old_raw = _stream_raw_size(rawimg)
 
                 try:
                     pim = PdfImage(rawimg).as_pil_image()
@@ -456,12 +533,16 @@ def compress_pdf_scan_turbo(
                     images_skipped += 1
                     continue
 
+                # IMPORTANT: Skip replacement if it would not reduce size
+                if old_raw is not None and len(jpeg_bytes) >= old_raw:
+                    images_skipped += 1
+                    continue
+
                 try:
                     rawimg.write(jpeg_bytes, filter=Name("/DCTDecode"))
                     rawimg.Width, rawimg.Height = pim.width, pim.height
                     rawimg.BitsPerComponent = 8
                     rawimg.ColorSpace = Name("/DeviceGray") if grayscale else Name("/DeviceRGB")
-                    # Remove decode parms that apply to Flate-style encodings
                     try:
                         if "/DecodeParms" in rawimg:
                             del rawimg["/DecodeParms"]
@@ -472,7 +553,6 @@ def compress_pdf_scan_turbo(
                     images_skipped += 1
                     continue
 
-        out = BytesIO()
         kwargs = {
             "compress_streams": True,
             "linearize": bool(linearize),
@@ -483,17 +563,15 @@ def compress_pdf_scan_turbo(
         if object_streams and hasattr(pikepdf, "ObjectStreamMode"):
             kwargs["object_stream_mode"] = pikepdf.ObjectStreamMode.generate
 
-        _safe_pikepdf_save(pdf, out, kwargs)
-        out.seek(0)
+        out_bytes = _pikepdf_save_best(pdf, kwargs, original_size=len(input_bytes), try_harder=try_harder)
         note = f"Images total: {images_total}, optimized: {images_optimized}, skipped: {images_skipped}"
-        return out.getvalue(), "pikepdf(qpdf) scan/turbo", note
+        return out_bytes, "pikepdf(qpdf) scan/turbo", note
 
 
 # =========================
-# Ultra B/W: CCITT Group4 internal (pure Python, requires libtiff in Pillow)
+# Ultra B/W: CCITT Group4 internal (requires Pillow libtiff)
 # =========================
 def _bitrev_table() -> bytes:
-    # 256-byte lookup table for bit reversal
     return bytes(int(f"{i:08b}"[::-1], 2) for i in range(256))
 
 
@@ -522,9 +600,7 @@ class _temp_attr:
 
 
 def _ccitt_payload_location_from_pil(img):
-    # Extract CCITT strip payload location from TIFF tags
     from PIL import TiffImagePlugin
-
     strip_offsets = img.tag_v2[TiffImagePlugin.STRIPOFFSETS]
     strip_bytes = img.tag_v2[TiffImagePlugin.STRIPBYTECOUNTS]
     if len(strip_offsets) != 1 or len(strip_bytes) != 1:
@@ -560,10 +636,8 @@ def _otsu_threshold_from_hist(hist: list[int]) -> int:
 
 
 def _is_nearly_bilevel(pil_img, *, tol: int = 12, ratio: float = 0.985) -> bool:
-    # Histogram-based: proportion near black or near white
     try:
         g = pil_img.convert("L")
-        # Downsample for speed
         max_side = 512
         if max(g.size) > max_side:
             scale = max_side / max(g.size)
@@ -580,16 +654,11 @@ def _is_nearly_bilevel(pil_img, *, tol: int = 12, ratio: float = 0.985) -> bool:
 
 
 def _transcode_monochrome_to_ccitt_g4(pil_bw_1bit):
-    """
-    Convert a 1-bit PIL image to raw CCITT Group4 payload + inversion flag.
-    Requires Pillow built with libtiff support.
-    """
     from PIL import Image, TiffImagePlugin, features as PIL_features
 
     if not PIL_features.check("libtiff"):
         raise RuntimeError("Pillow is not compiled with libtiff; cannot encode Group4 CCITT.")
 
-    # Write a Group4 TIFF in-memory (force single strip), then extract raw payload
     newimgio = BytesIO()
     img2 = Image.frombytes(pil_bw_1bit.mode, pil_bw_1bit.size, pil_bw_1bit.tobytes())
 
@@ -599,7 +668,6 @@ def _transcode_monochrome_to_ccitt_g4(pil_bw_1bit):
         with _temp_attr(TiffImagePlugin, "STRIP_SIZE", tmp_strip_size):
             img2.save(newimgio, format="TIFF", compression="group4")
     else:
-        # Old Pillow fallback (rare now)
         pillow__getitem__ = TiffImagePlugin.ImageFileDirectory_v2.__getitem__
 
         def __getitem__(self, tag: int):
@@ -616,19 +684,13 @@ def _transcode_monochrome_to_ccitt_g4(pil_bw_1bit):
     newimgio.seek(0)
     tiff_img = Image.open(newimgio)
 
-    # Determine inversion (TIFF photometric)
     photo = tiff_img.tag_v2[TiffImagePlugin.PHOTOMETRIC_INTERPRETATION]
-    inverted = False
-    if photo == 0:
-        inverted = True
-    elif photo == 1:
-        inverted = False
+    inverted = (photo == 0)
 
     offset, length = _ccitt_payload_location_from_pil(tiff_img)
     newimgio.seek(offset)
     payload = newimgio.read(length)
 
-    # Handle FillOrder if needed
     fillorder = tiff_img.tag_v2.get(TiffImagePlugin.FILLORDER)
     if fillorder == 2:
         payload = bytes(TIFF_BITREV[b] for b in payload)
@@ -650,6 +712,7 @@ def compress_pdf_ultra_bw_internal_ccitt(
     compression_level: int,
     object_streams: bool,
     linearize: bool,
+    try_harder: bool,
 ) -> tuple[bytes, str, str]:
     try:
         import pikepdf
@@ -660,16 +723,7 @@ def compress_pdf_ultra_bw_internal_ccitt(
 
     Image.MAX_IMAGE_PIXELS = None
 
-    try:
-        pdf = pikepdf.open(BytesIO(input_bytes), password=password)
-    except Exception as exc:
-        PasswordError = getattr(pikepdf, "PasswordError", None)
-        PdfError = getattr(pikepdf, "PdfError", None)
-        if PasswordError and isinstance(exc, PasswordError):
-            raise ValueError("Unable to decrypt the PDF with the provided password.")
-        if PdfError and isinstance(exc, PdfError):
-            raise ValueError("The file could not be read as a PDF.")
-        raise
+    pdf = _pikepdf_open_or_raise(input_bytes, password)
 
     images_total = 0
     images_ccitt = 0
@@ -714,24 +768,41 @@ def compress_pdf_ultra_bw_internal_ccitt(
                     images_skipped += 1
                     continue
 
+                old_raw = _stream_raw_size(rawimg)
+
                 try:
                     pim = PdfImage(rawimg).as_pil_image()
                 except Exception:
                     images_skipped += 1
                     continue
 
-                # Optional bilevel-likeliness test (to avoid destroying grayscale photos)
+                # If not bilevel-ish and we're being strict, do a gentle grayscale JPEG fallback
                 if only_if_nearly_bilevel and (not _is_nearly_bilevel(pim)):
-                    # Not bilevel-ish: fallback to grayscale JPEG (still big savings, less harsh)
                     try:
                         g = pim.convert("L")
                         if t_w and t_h and (g.width > t_w or g.height > t_h):
                             scale = min(t_w / g.width, t_h / g.height)
-                            g = g.resize((max(1, int(g.width * scale)), max(1, int(g.height * scale))), Image.Resampling.LANCZOS)
+                            g = g.resize(
+                                (max(1, int(g.width * scale)), max(1, int(g.height * scale))),
+                                Image.Resampling.LANCZOS,
+                            )
 
                         buf = BytesIO()
-                        g.save(buf, format="JPEG", quality=int(max(40, min(95, fallback_jpeg_quality))), optimize=True, progressive=True)
-                        rawimg.write(buf.getvalue(), filter=Name("/DCTDecode"))
+                        g.save(
+                            buf,
+                            format="JPEG",
+                            quality=int(max(40, min(95, fallback_jpeg_quality))),
+                            optimize=True,
+                            progressive=True,
+                        )
+                        jb = buf.getvalue()
+
+                        # Skip if not smaller
+                        if old_raw is not None and len(jb) >= old_raw:
+                            images_skipped += 1
+                            continue
+
+                        rawimg.write(jb, filter=Name("/DCTDecode"))
                         rawimg.Width, rawimg.Height = g.width, g.height
                         rawimg.BitsPerComponent = 8
                         rawimg.ColorSpace = Name("/DeviceGray")
@@ -750,7 +821,10 @@ def compress_pdf_ultra_bw_internal_ccitt(
                     g = pim.convert("L")
                     if t_w and t_h and (g.width > t_w or g.height > t_h):
                         scale = min(t_w / g.width, t_h / g.height)
-                        g = g.resize((max(1, int(g.width * scale)), max(1, int(g.height * scale))), Image.Resampling.LANCZOS)
+                        g = g.resize(
+                            (max(1, int(g.width * scale)), max(1, int(g.height * scale))),
+                            Image.Resampling.LANCZOS,
+                        )
                 except Exception:
                     images_skipped += 1
                     continue
@@ -758,8 +832,7 @@ def compress_pdf_ultra_bw_internal_ccitt(
                 # Threshold to 1-bit
                 try:
                     if threshold_mode == "auto":
-                        hist = g.histogram()
-                        thr = _otsu_threshold_from_hist(hist)
+                        thr = _otsu_threshold_from_hist(g.histogram())
                     else:
                         thr = int(max(0, min(255, manual_threshold)))
                     bw = g.point(lambda p: 255 if p > thr else 0, mode="1")
@@ -767,9 +840,14 @@ def compress_pdf_ultra_bw_internal_ccitt(
                     images_skipped += 1
                     continue
 
-                # Encode CCITT G4 and replace
+                # Encode CCITT G4 and replace (skip if not smaller)
                 try:
                     payload, inverted = _transcode_monochrome_to_ccitt_g4(bw)
+
+                    if old_raw is not None and len(payload) >= old_raw:
+                        images_skipped += 1
+                        continue
+
                     rawimg.write(payload, filter=Name("/CCITTFaxDecode"))
                     rawimg.Width, rawimg.Height = bw.width, bw.height
                     rawimg.BitsPerComponent = 1
@@ -784,14 +862,24 @@ def compress_pdf_ultra_bw_internal_ccitt(
                     rawimg.Decode = [1, 0] if inverted else [0, 1]
                     images_ccitt += 1
                 except Exception:
-                    # If CCITT fails (no libtiff), fallback to grayscale JPEG
+                    # CCITT failed (likely no libtiff). Fallback grayscale JPEG, but only if smaller.
                     try:
                         buf = BytesIO()
-                        g2 = g
-                        buf = BytesIO()
-                        g2.save(buf, format="JPEG", quality=int(max(40, min(95, fallback_jpeg_quality))), optimize=True, progressive=True)
-                        rawimg.write(buf.getvalue(), filter=Name("/DCTDecode"))
-                        rawimg.Width, rawimg.Height = g2.width, g2.height
+                        g.save(
+                            buf,
+                            format="JPEG",
+                            quality=int(max(40, min(95, fallback_jpeg_quality))),
+                            optimize=True,
+                            progressive=True,
+                        )
+                        jb = buf.getvalue()
+
+                        if old_raw is not None and len(jb) >= old_raw:
+                            images_skipped += 1
+                            continue
+
+                        rawimg.write(jb, filter=Name("/DCTDecode"))
+                        rawimg.Width, rawimg.Height = g.width, g.height
                         rawimg.BitsPerComponent = 8
                         rawimg.ColorSpace = Name("/DeviceGray")
                         try:
@@ -803,7 +891,6 @@ def compress_pdf_ultra_bw_internal_ccitt(
                     except Exception:
                         images_skipped += 1
 
-        out = BytesIO()
         kwargs = {
             "compress_streams": True,
             "linearize": bool(linearize),
@@ -814,13 +901,12 @@ def compress_pdf_ultra_bw_internal_ccitt(
         if object_streams and hasattr(pikepdf, "ObjectStreamMode"):
             kwargs["object_stream_mode"] = pikepdf.ObjectStreamMode.generate
 
-        _safe_pikepdf_save(pdf, out, kwargs)
-        out.seek(0)
+        out_bytes = _pikepdf_save_best(pdf, kwargs, original_size=len(input_bytes), try_harder=try_harder)
         note = (
             f"Images total: {images_total}, CCITT(G4): {images_ccitt}, "
             f"fallback JPEG(gray): {images_fallback_jpeg}, skipped: {images_skipped}"
         )
-        return out.getvalue(), "pikepdf(qpdf) ultra bw (internal)", note
+        return out_bytes, "pikepdf(qpdf) ultra bw (internal)", note
 
 
 # =========================
@@ -836,39 +922,36 @@ def compress_pdf_ultra_bw_ocrmypdf(
     png_quality: int | None,
     jbig2_lossy: bool,
     skip_text: bool,
+    try_harder: bool,
 ) -> tuple[bytes, str, str]:
     try:
         import ocrmypdf
     except ImportError as exc:
         raise ValueError("OCRmyPDF is not installed. Install: pip install ocrmypdf") from exc
 
-    # OCRmyPDF does not accept encrypted PDFs with a password parameter → decrypt first
+    # OCRmyPDF doesn't accept passwords; decrypt first if needed.
     decrypted = input_bytes
-    try:
-        r = PdfReader(BytesIO(input_bytes))
-        if r.is_encrypted:
-            if not password:
-                raise ValueError("This PDF is password-protected. Provide a password to continue.")
-            if r.decrypt(password) == 0:
-                raise ValueError("Unable to decrypt the PDF with the provided password.")
-            w = PdfWriter()
-            if hasattr(w, "clone_document_from_reader"):
-                w.clone_document_from_reader(r)
-            else:
-                for p in r.pages:
-                    w.add_page(p)
-            buf = BytesIO()
-            w.write(buf)
-            buf.seek(0)
-            decrypted = buf.getvalue()
-    except Exception:
-        # If decryption check fails, we still try OCRmyPDF; it will error if encrypted.
-        decrypted = input_bytes
+    r = PdfReader(BytesIO(input_bytes))
+    if r.is_encrypted:
+        if not password:
+            raise ValueError("This PDF is password-protected. Provide a password to continue.")
+        if r.decrypt(password) == 0:
+            raise ValueError("Unable to decrypt the PDF with the provided password.")
+        w = PdfWriter()
+        if hasattr(w, "clone_document_from_reader"):
+            w.clone_document_from_reader(r)
+        else:
+            for p in r.pages:
+                w.add_page(p)
+        buf = BytesIO()
+        w.write(buf)
+        buf.seek(0)
+        decrypted = buf.getvalue()
 
     inp = BytesIO(decrypted)
+    inp.seek(0)
     out = BytesIO()
 
-    # Keep Streamlit stable: use_threads avoids multiprocessing/fork pain
     kwargs = dict(
         optimize=int(max(0, min(3, optimize_level))),
         output_type="pdf",
@@ -889,15 +972,12 @@ def compress_pdf_ultra_bw_ocrmypdf(
     if png_quality is not None:
         kwargs["png_quality"] = int(png_quality)
 
-    # Disable OCR:
-    # v17+: ocr_engine='none'
-    # older idiom: tesseract_timeout=0
+    # Disable OCR: newer versions accept ocr_engine="none"
     if _supports_kw(ocrmypdf.ocr, "ocr_engine"):
         kwargs["ocr_engine"] = "none"
     elif _supports_kw(ocrmypdf.ocr, "tesseract_timeout"):
         kwargs["tesseract_timeout"] = 0
 
-    # Run
     try:
         exit_code = ocrmypdf.ocr(inp, out, **kwargs)
     except Exception as exc:
@@ -906,7 +986,9 @@ def compress_pdf_ultra_bw_ocrmypdf(
     out.seek(0)
     out_bytes = out.getvalue()
 
-    # Postprocess metadata (remove or preserve original as requested)
+    # Postprocess metadata and run a qpdf-style lossless squeeze pass
+    note = f"OCRmyPDF exit_code: {exit_code}"
+
     try:
         import pikepdf
         with pikepdf.open(BytesIO(decrypted)) as src_pdf, pikepdf.open(BytesIO(out_bytes)) as dst_pdf:
@@ -914,15 +996,22 @@ def compress_pdf_ultra_bw_ocrmypdf(
                 _pikepdf_remove_metadata(dst_pdf)
             else:
                 _pikepdf_copy_metadata(src_pdf, dst_pdf)
-            out2 = BytesIO()
-            dst_pdf.save(out2)
-            out2.seek(0)
-            out_bytes = out2.getvalue()
+
+            # Save with best lossless options (and pick smallest variant if needed)
+            kwargs2 = {
+                "compress_streams": True,
+                "linearize": False,
+                "normalize_content": True,
+                "recompress_flate": True,
+                "compression_level": 9,
+            }
+            if hasattr(pikepdf, "ObjectStreamMode"):
+                kwargs2["object_stream_mode"] = pikepdf.ObjectStreamMode.generate
+
+            out_bytes = _pikepdf_save_best(dst_pdf, kwargs2, original_size=len(decrypted), try_harder=try_harder)
     except Exception:
-        # If pikepdf not available, leave as-is
         pass
 
-    note = f"OCRmyPDF exit_code: {exit_code}"
     return out_bytes, "OCRmyPDF ultra bw (optimize-only)", note
 
 
@@ -951,10 +1040,11 @@ with st.sidebar:
     st.subheader("Common options")
     remove_metadata = st.checkbox("Remove metadata (Info + XMP)", value=False)
     keep_smaller_only = st.checkbox("Keep original if compression increases size", value=True)
+    try_harder = st.checkbox("Try harder when size increases (slower)", value=True)
     output_suffix = st.text_input("Output filename suffix", value="-compressed")
     password = st.text_input("Password (only if PDF is protected)", type="password", placeholder="Leave blank if not needed")
 
-    # Common save tuning
+    st.subheader("Save tuning")
     compression_level = st.slider("Lossless stream recompression level", 1, 9, 9)
     object_streams = st.checkbox("Use object streams (PDF 1.5+)", value=True)
     linearize = st.checkbox("Fast web view (linearize)", value=False)
@@ -1026,13 +1116,15 @@ if uploaded_files:
     results: list[CompressionResult] = []
     errors: list[str] = []
 
-    prog = st.progress(0)
+    prog = st.progress(0.0)
+
     for i, uploaded_file in enumerate(uploaded_files, start=1):
         try:
             original_bytes = uploaded_file.getvalue()
+            original_size = len(original_bytes)
 
             if mode.startswith("Lossless"):
-                compressed_bytes, used_backend = compress_pdf_lossless(
+                attempted_bytes, used_backend = compress_pdf_lossless(
                     original_bytes,
                     password=password or None,
                     remove_metadata=remove_metadata,
@@ -1040,11 +1132,12 @@ if uploaded_files:
                     compression_level=compression_level,
                     object_streams=object_streams,
                     linearize=linearize,
+                    try_harder=try_harder,
                 )
                 note = "Exact visuals preserved."
 
             elif mode.startswith("Scan/Turbo"):
-                compressed_bytes, used_backend, note = compress_pdf_scan_turbo(
+                attempted_bytes, used_backend, note = compress_pdf_scan_turbo(
                     original_bytes,
                     password=password or None,
                     remove_metadata=remove_metadata,
@@ -1055,20 +1148,20 @@ if uploaded_files:
                     compression_level=compression_level,
                     object_streams=object_streams,
                     linearize=linearize,
+                    try_harder=try_harder,
                 )
 
             else:
-                # Ultra B/W
                 def _try_ocrmypdf_first() -> bool:
                     return ultra_engine.startswith("auto") or ultra_engine.startswith("OCRmyPDF")
 
+                attempted_bytes = b""
                 used_backend = ""
                 note = ""
-                compressed_bytes = b""
 
                 if _try_ocrmypdf_first():
                     try:
-                        compressed_bytes, used_backend, note = compress_pdf_ultra_bw_ocrmypdf(
+                        attempted_bytes, used_backend, note = compress_pdf_ultra_bw_ocrmypdf(
                             original_bytes,
                             password=password or None,
                             remove_metadata=remove_metadata,
@@ -1077,17 +1170,17 @@ if uploaded_files:
                             png_quality=ocr_png_quality,
                             jbig2_lossy=ocr_jbig2_lossy,
                             skip_text=ocr_skip_text,
+                            try_harder=try_harder,
                         )
                     except Exception as exc:
-                        # Auto falls back; explicit OCRmyPDF shows error
                         if ultra_engine.startswith("OCRmyPDF"):
                             raise
                         note = f"OCRmyPDF unavailable/failed -> fallback internal CCITT. ({exc})"
-                        compressed_bytes = b""
+                        attempted_bytes = b""
                         used_backend = ""
 
-                if not compressed_bytes:
-                    compressed_bytes, used_backend2, note2 = compress_pdf_ultra_bw_internal_ccitt(
+                if not attempted_bytes:
+                    attempted_bytes, used_backend2, note2 = compress_pdf_ultra_bw_internal_ccitt(
                         original_bytes,
                         password=password or None,
                         remove_metadata=remove_metadata,
@@ -1100,21 +1193,28 @@ if uploaded_files:
                         compression_level=compression_level,
                         object_streams=object_streams,
                         linearize=linearize,
+                        try_harder=try_harder,
                     )
                     used_backend = used_backend or used_backend2
                     note = f"{note}\n{note2}".strip()
 
-            output_bytes = compressed_bytes
+            attempted_size = len(attempted_bytes)
+
+            # Deliver smaller-only if enabled
+            output_bytes = attempted_bytes
             used_original = False
-            if keep_smaller_only and len(compressed_bytes) >= len(original_bytes):
+            if keep_smaller_only and attempted_size >= original_size:
                 output_bytes = original_bytes
                 used_original = True
+
+            output_size = len(output_bytes)
 
             results.append(
                 CompressionResult(
                     filename=build_output_name(uploaded_file.name, output_suffix),
-                    original_size=len(original_bytes),
-                    compressed_size=len(compressed_bytes),
+                    original_size=original_size,
+                    attempted_size=attempted_size,
+                    output_size=output_size,
                     data=output_bytes,
                     used_original=used_original,
                     backend=used_backend,
@@ -1124,7 +1224,7 @@ if uploaded_files:
         except Exception as exc:
             errors.append(f"{uploaded_file.name}: {exc}")
 
-        prog.progress(int(i / max(1, len(uploaded_files)) * 100))
+        prog.progress(i / max(1, len(uploaded_files)))
 
     if errors:
         st.error("Some files could not be processed:")
@@ -1136,13 +1236,27 @@ if uploaded_files:
         st.subheader("Results")
 
         for r in results:
-            ratio = 0.0 if r.original_size == 0 else (1 - r.compressed_size / r.original_size) * 100
+            ratio = 0.0 if r.original_size == 0 else (1 - r.output_size / r.original_size) * 100
             status_note = " (kept original)" if r.used_original else ""
             st.write(
-                f"**{r.filename}** — {format_size(r.original_size)} → {format_size(r.compressed_size)} "
+                f"**{r.filename}** — "
+                f"{format_size(r.original_size)} → {format_size(r.output_size)} "
                 f"({ratio:.1f}% reduction){status_note}\n\n"
-                f"Engine: `{r.backend}`  \n{r.note}"
+                f"Engine: `{r.backend}`\n"
             )
+
+            if r.used_original:
+                # Show transparency: how big the best attempt was
+                delta = r.attempted_size - r.original_size
+                sign = "+" if delta >= 0 else ""
+                st.caption(
+                    f"Best attempt was {format_size(r.attempted_size)} ({sign}{format_size(abs(delta))} vs original), "
+                    f"so original was kept."
+                )
+
+            if r.note:
+                st.caption(r.note)
+
             st.download_button(
                 label=f"Download {r.filename}",
                 data=r.data,
